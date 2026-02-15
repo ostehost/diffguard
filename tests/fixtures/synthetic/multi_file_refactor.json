@@ -1,0 +1,51 @@
+{
+  "meta": {
+    "ref_range": "eee5555..fff6666",
+    "stats": {"files": 3, "additions": 40, "deletions": 15},
+    "warnings": ["parser timeout on config.yaml"]
+  },
+  "files": [
+    {
+      "path": "src/core.py",
+      "language": "python",
+      "change_type": "modified",
+      "changes": [
+        {
+          "kind": "function_modified",
+          "name": "init_app",
+          "signature": "def init_app(config: Config) -> App",
+          "line": 8
+        },
+        {
+          "kind": "class_modified",
+          "name": "App",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "path": "src/helpers.py",
+      "language": "python",
+      "change_type": "added",
+      "changes": [
+        {
+          "kind": "function_added",
+          "name": "validate",
+          "signature": "def validate(data: dict) -> bool",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "path": "config.yaml",
+      "change_type": "modified",
+      "parse_error": true
+    }
+  ],
+  "summary": {
+    "change_types": {"refactor": 3}
+  },
+  "tiered": {
+    "oneliner": "Refactored app init and added validation helper"
+  }
+}

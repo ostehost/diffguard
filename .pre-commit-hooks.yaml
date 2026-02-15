@@ -1,0 +1,8 @@
+- id: diffguard-review
+  name: DiffGuard Review
+  description: Run diffguard review to detect breaking API changes
+  entry: diffguard review HEAD
+  language: python
+  pass_filenames: false
+  stages: [pre-push]
+  always_run: true

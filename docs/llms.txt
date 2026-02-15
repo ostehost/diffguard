@@ -1,0 +1,18 @@
+# DiffGuard
+
+> Structural verification for code changes. Uses tree-sitter AST analysis to detect breaking changes in git diffs and trace their impact through your codebase.
+
+## Docs
+
+- [Home](https://ostehost.github.io/diffguard/): Overview, Flask demo, philosophy
+- [Quickstart](https://ostehost.github.io/diffguard/quickstart/): Install and run in under 5 minutes
+- [Real-World Catches](https://ostehost.github.io/diffguard/real-world-catches/): DiffGuard vs. historical OSS bugs (Flask, httpx, Pydantic)
+- [How It Works](https://ostehost.github.io/diffguard/how-it-works/): Tree-sitter pipeline, selective trigger, precision approach
+- [Agent Integration](https://ostehost.github.io/diffguard/agent-integration/): Claude Code, Cursor, and CI workflow setup
+- [Schema Reference](https://ostehost.github.io/diffguard/schema/): JSON output formats
+- [Architecture](https://ostehost.github.io/diffguard/architecture/): Module design and internals
+- [Roadmap](https://ostehost.github.io/diffguard/roadmap/): Phases, kill signals, and future plans
+
+## Full context
+
+- [llms-ctx.txt](https://ostehost.github.io/diffguard/llms-ctx.txt): All documentation concatenated

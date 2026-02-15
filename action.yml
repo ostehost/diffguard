@@ -1,0 +1,107 @@
+name: "DiffGuard PR Review"
+description: "Catches structural breaks that pass code review — runs diffguard review on PRs and posts findings as a comment."
+branding:
+  icon: "search"
+  color: "orange"
+
+inputs:
+  python-version:
+    description: "Python version to use"
+    default: "3.11"
+  ref-range:
+    description: "Git ref range (auto-detected from PR context if not set)"
+    required: false
+  format:
+    description: "Output format for diffguard review"
+    default: "text"
+  post-comment:
+    description: "Post findings as a PR comment"
+    default: "true"
+
+outputs:
+  findings:
+    description: "Raw diffguard review output"
+    value: ${{ steps.review.outputs.findings }}
+  exit-code:
+    description: "diffguard exit code (0=no findings, 1=findings, 2=error)"
+    value: ${{ steps.review.outputs.exit-code }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install DiffGuard
+      shell: bash
+      run: pip install diffguard
+
+    - name: Run DiffGuard review
+      id: review
+      shell: bash
+      run: |
+        REF_RANGE="${{ inputs.ref-range }}"
+        if [ -z "$REF_RANGE" ]; then
+          REF_RANGE="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+        fi
+
+        set +e
+        OUTPUT=$(diffguard review "$REF_RANGE" --format "${{ inputs.format }}" 2>&1)
+        EXIT_CODE=$?
+        set -e
+
+        echo "exit-code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+
+        # Write findings to output (handle multiline)
+        {
+          echo "findings<<DIFFGUARD_EOF"
+          echo "$OUTPUT"
+          echo "DIFFGUARD_EOF"
+        } >> "$GITHUB_OUTPUT"
+
+        if [ $EXIT_CODE -eq 2 ]; then
+          echo "::error::DiffGuard encountered an error"
+          echo "$OUTPUT" >&2
+          exit 1
+        fi
+
+        if [ $EXIT_CODE -eq 1 ]; then
+          echo "$OUTPUT"
+        fi
+
+    - name: Post PR comment
+      if: inputs.post-comment == 'true' && steps.review.outputs.exit-code == '1' && github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      env:
+        DIFFGUARD_FINDINGS: ${{ steps.review.outputs.findings }}
+      with:
+        script: |
+          const findings = process.env.DIFFGUARD_FINDINGS;
+          const body = `<!-- diffguard-review -->\n### 🔍 DiffGuard Review\n\n\`\`\`\n${findings}\n\`\`\`\n\n<sub>Posted by [DiffGuard](https://github.com/ostehost/diffguard) · structural change detection</sub>`;
+
+          // Find and update existing comment, or create new one
+          const { data: comments } = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          });
+
+          const existing = comments.find(c => c.body.includes('<!-- diffguard-review -->'));
+
+          if (existing) {
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: existing.id,
+              body,
+            });
+          } else {
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+          }

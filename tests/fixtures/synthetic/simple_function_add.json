@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "ref_range": "aaa1111..bbb2222",
+    "stats": {"files": 1, "additions": 5, "deletions": 0}
+  },
+  "files": [
+    {
+      "path": "utils.py",
+      "language": "python",
+      "change_type": "modified",
+      "changes": [
+        {
+          "kind": "function_added",
+          "name": "compute_total",
+          "signature": "def compute_total(items: list[int]) -> int",
+          "line": 12
+        }
+      ]
+    }
+  ]
+}

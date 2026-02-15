@@ -1,0 +1,47 @@
+site_name: DiffGuard
+site_description: Structural verification for code changes
+repo_url: https://github.com/ostehost/diffguard
+repo_name: ostehost/diffguard
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - Real-World Catches: real-world-catches.md
+  - How It Works: how-it-works.md
+  - Agent Integration: agent-integration.md
+  - Schema Reference: schema.md
+  - Architecture: architecture.md
+  - Roadmap: roadmap.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - pymdownx.details
+  - toc:
+      permalink: true

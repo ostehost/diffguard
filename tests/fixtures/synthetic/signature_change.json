@@ -1,0 +1,35 @@
+{
+  "meta": {
+    "ref_range": "ccc3333..ddd4444",
+    "stats": {"files": 1, "additions": 3, "deletions": 2}
+  },
+  "files": [
+    {
+      "path": "api/handler.py",
+      "language": "python",
+      "change_type": "modified",
+      "changes": [
+        {
+          "kind": "signature_changed",
+          "name": "process_request",
+          "before_signature": "def process_request(data: dict) -> Response",
+          "after_signature": "def process_request(data: dict, timeout: int) -> Response",
+          "line": 45,
+          "breaking": true
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "change_types": {"breaking": 1},
+    "breaking_changes": [
+      {
+        "kind": "signature_changed",
+        "name": "process_request",
+        "before_signature": "def process_request(data: dict) -> Response",
+        "after_signature": "def process_request(data: dict, timeout: int) -> Response",
+        "breaking": true
+      }
+    ]
+  }
+}
