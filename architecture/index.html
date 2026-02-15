@@ -1,0 +1,1563 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Structural verification for code changes">
+      
+      
+      
+      
+        <link rel="prev" href="../schema/">
+      
+      
+        <link rel="next" href="../roadmap/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
+    
+    
+      
+        <title>Architecture - DiffGuard</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="cyan">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#architecture" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="DiffGuard" class="md-header__button md-logo" aria-label="DiffGuard" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            DiffGuard
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Architecture
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="cyan"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="cyan"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/ostehost/diffguard" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    ostehost/diffguard
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../quickstart/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Quickstart
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../real-world-catches/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Real-World Catches
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../how-it-works/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  How It Works
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../agent-integration/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Agent Integration
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../schema/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Schema Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../roadmap/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Roadmap
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="DiffGuard" class="md-nav__button md-logo" aria-label="DiffGuard" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    DiffGuard
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/ostehost/diffguard" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    ostehost/diffguard
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../real-world-catches/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Real-World Catches
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-it-works/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How It Works
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Schema Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pipeline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Modules
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#language-plugin-system" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Language plugin system
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Language plugin system">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#supported-languages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported languages
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#symbol-extraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Symbol extraction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#matching-algorithm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Matching algorithm
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#selective-trigger" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Selective trigger
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Selective trigger">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#signature-change-categories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Signature change categories
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#change-kinds-in-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Change kinds in schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#exit-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exit codes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Exit codes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#review-command" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        review command
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#summarize-command" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        summarize command
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dependency-scanning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dependency scanning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#graceful-degradation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Graceful degradation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stack" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stack
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Stack">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-not-these-alternatives" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why not these alternatives
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pipeline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Modules
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#language-plugin-system" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Language plugin system
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Language plugin system">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#supported-languages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported languages
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#symbol-extraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Symbol extraction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#matching-algorithm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Matching algorithm
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#selective-trigger" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Selective trigger
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Selective trigger">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#signature-change-categories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Signature change categories
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#change-kinds-in-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Change kinds in schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#exit-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exit codes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Exit codes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#review-command" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        review command
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#summarize-command" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        summarize command
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dependency-scanning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dependency scanning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#graceful-degradation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Graceful degradation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stack" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stack
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Stack">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-not-these-alternatives" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why not these alternatives
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h1>
+<h2 id="pipeline">Pipeline<a class="headerlink" href="#pipeline" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>git diff ──→ parse ──→ extract ──→ match ──→ classify ──→ summarize ──→ JSON
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>             │         │           │         │            │
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>             │         │           │         │            └─ tiered summaries
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>             │         │           │         └─ added/removed/modified/moved
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>             │         │           └─ name-match old↔new symbols (O(n) dict)
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>             │         └─ tree-sitter queries → functions, classes, methods
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>             └─ py-tree-sitter parses old + new file versions
+</code></pre></div>
+<p><strong>Typical timing:</strong> ~200ms for a 1000-line diff.</p>
+<h2 id="modules">Modules<a class="headerlink" href="#modules" title="Permanent link">&para;</a></h2>
+<p>Each module has a single responsibility. No horizontal imports between engine modules.</p>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Input</th>
+<th>Output</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cli.py</code></td>
+<td>CLI args</td>
+<td>exit code + JSON/text</td>
+<td>Click CLI entry point. Commands: <code>review</code>, <code>summarize</code>, <code>context</code> (hidden alias for review), <code>install-hook</code>. Orchestrates pipeline and determines output.</td>
+</tr>
+<tr>
+<td><code>git.py</code></td>
+<td>ref range</td>
+<td>changed files + old/new content</td>
+<td>All git subprocess calls. Nothing else touches git.</td>
+</tr>
+<tr>
+<td><code>engine/_types.py</code></td>
+<td>—</td>
+<td>—</td>
+<td>Shared type aliases and dataclasses (<code>Symbol</code>, <code>ParseResult</code>, <code>compute_body_hash</code>).</td>
+</tr>
+<tr>
+<td><code>engine/parser.py</code></td>
+<td>source file</td>
+<td>syntax tree</td>
+<td>Tree-sitter parsing. No git logic, no matching.</td>
+</tr>
+<tr>
+<td><code>engine/matcher.py</code></td>
+<td>old symbols + new symbols</td>
+<td>matched pairs</td>
+<td>Name-based symbol matching. O(n) dict lookup.</td>
+</tr>
+<tr>
+<td><code>engine/classifier.py</code></td>
+<td>matched pairs</td>
+<td>classified changes</td>
+<td>Labels: added, removed, modified, moved, signature_changed. Sets <code>breaking</code> flag.</td>
+</tr>
+<tr>
+<td><code>engine/signatures.py</code></td>
+<td>old + new signatures</td>
+<td>breaking change flags + category labels</td>
+<td>Signature comparison. Detects parameter changes, return type changes, default value changes.</td>
+</tr>
+<tr>
+<td><code>engine/deps.py</code></td>
+<td>symbol names + git ref</td>
+<td>external references</td>
+<td>Dependency/caller detection. Uses <code>git grep</code> to pre-filter, then tree-sitter to confirm references in non-diff files.</td>
+</tr>
+<tr>
+<td><code>engine/summarizer.py</code></td>
+<td>classified changes</td>
+<td>tiered text</td>
+<td>Generates oneliner, short, detailed summaries.</td>
+</tr>
+<tr>
+<td><code>engine/pipeline.py</code></td>
+<td>ref range + content provider</td>
+<td><code>DiffGuardOutput</code></td>
+<td>Orchestrates parse → match → classify → summarize for all files.</td>
+</tr>
+<tr>
+<td><code>schema.py</code></td>
+<td>—</td>
+<td>—</td>
+<td>Pydantic models. The contract.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="language-plugin-system">Language plugin system<a class="headerlink" href="#language-plugin-system" title="Permanent link">&para;</a></h2>
+<p>The <code>languages/</code> package provides per-language tree-sitter support. Each language module (e.g., <code>languages/python/__init__.py</code>) exports:</p>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>get_language()</code></td>
+<td>Returns the <code>tree_sitter.Language</code> object</td>
+</tr>
+<tr>
+<td><code>extract_symbols(tree, source)</code></td>
+<td>Walks the parsed tree and returns <code>list[Symbol]</code></td>
+</tr>
+</tbody>
+</table>
+<p>The top-level <code>languages/__init__.py</code> provides:</p>
+<ul>
+<li><code>SUPPORTED_LANGUAGES</code> — set of supported language names</li>
+<li><code>detect_language(filename)</code> — maps file extensions to language names</li>
+<li><code>get_parser(language)</code> — returns a configured <code>tree_sitter.Parser</code></li>
+<li><code>get_language_module(language)</code> — dynamically imports the language module</li>
+</ul>
+<p><code>languages/_utils.py</code> contains shared helpers (e.g., <code>node_text()</code> for safe node text extraction).</p>
+<h3 id="supported-languages">Supported languages<a class="headerlink" href="#supported-languages" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Language</th>
+<th>Module</th>
+<th>Grammar</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Python</td>
+<td><code>languages/python/</code></td>
+<td>tree-sitter-python</td>
+</tr>
+<tr>
+<td>TypeScript</td>
+<td><code>languages/typescript/</code></td>
+<td>tree-sitter-typescript</td>
+</tr>
+<tr>
+<td>JavaScript</td>
+<td><code>languages/typescript/</code> (shared)</td>
+<td>tree-sitter-javascript</td>
+</tr>
+<tr>
+<td>Go</td>
+<td><code>languages/go/</code></td>
+<td>tree-sitter-go</td>
+</tr>
+</tbody>
+</table>
+<h2 id="symbol-extraction">Symbol extraction<a class="headerlink" href="#symbol-extraction" title="Permanent link">&para;</a></h2>
+<p>DiffGuard uses tree-sitter to parse source files and walk the AST to extract:</p>
+<ul>
+<li>Function/method definitions with signatures</li>
+<li>Class/struct/interface definitions</li>
+<li>Line numbers and scope</li>
+<li>Body hashes for change detection</li>
+</ul>
+<p>For each changed file, DiffGuard parses both the old and new versions, extracts symbols from each, then matches them by name.</p>
+<h2 id="matching-algorithm">Matching algorithm<a class="headerlink" href="#matching-algorithm" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Build a dict of old symbols keyed by <code>(name, kind)</code></li>
+<li>Build a dict of new symbols keyed by <code>(name, kind)</code></li>
+<li>Symbols in both → <strong>modified</strong> (compare bodies/signatures)</li>
+<li>Symbols only in old → <strong>removed</strong></li>
+<li>Symbols only in new → <strong>added</strong></li>
+<li>Removed symbol name appears in a different file as added → <strong>moved</strong></li>
+</ol>
+<p>This is O(n) and handles the common case well. It deliberately does not attempt fuzzy rename detection — accuracy over comprehensiveness.</p>
+<h2 id="selective-trigger">Selective trigger<a class="headerlink" href="#selective-trigger" title="Permanent link">&para;</a></h2>
+<p>DiffGuard's core design principle: <strong>stay silent when there's nothing useful to say.</strong></p>
+<p>The <code>review</code> command checks for high-signal changes before producing output. If none are found, it exits with code 0 (silence). The logic lives in <code>cli.py::_has_high_signal_changes()</code>:</p>
+<p>A change is <strong>high-signal</strong> if any of these are true:</p>
+<table>
+<thead>
+<tr>
+<th>Trigger</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Signature changed</td>
+<td><code>before_signature</code> and <code>after_signature</code> both present — function contract changed</td>
+</tr>
+<tr>
+<td>Breaking change</td>
+<td><code>breaking=True</code> — callers may break</td>
+</tr>
+<tr>
+<td>Symbol removed</td>
+<td><code>kind</code> ends with <code>_removed</code> — dependents will break</td>
+</tr>
+<tr>
+<td>Symbol moved</td>
+<td><code>kind == "moved"</code> — imports need updating</td>
+</tr>
+</tbody>
+</table>
+<p>Body-only changes (same signature, different implementation) are <strong>not</strong> high-signal — they're internal refactors that don't affect callers.</p>
+<p>Dependency references (<code>deps.py</code>) provide context about <em>who</em> is affected, but don't independently trigger output. A moved function with 12 importers is high-signal because of the move, not because of the importers.</p>
+<h3 id="signature-change-categories">Signature change categories<a class="headerlink" href="#signature-change-categories" title="Permanent link">&para;</a></h3>
+<p>When a signature change is detected, <code>signatures.py::classify_signature_change()</code> provides a specific category label:</p>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PARAMETER REMOVED</code></td>
+<td>Positional or keyword-only parameter removed</td>
+</tr>
+<tr>
+<td><code>PARAMETER ADDED (BREAKING)</code></td>
+<td>New parameter without a default value</td>
+</tr>
+<tr>
+<td><code>RETURN TYPE CHANGED</code></td>
+<td>Return type annotation changed</td>
+</tr>
+<tr>
+<td><code>DEFAULT VALUE CHANGED</code></td>
+<td>Only difference is a changed default value on existing params</td>
+</tr>
+<tr>
+<td><code>BREAKING SIGNATURE CHANGE</code></td>
+<td>Other breaking change (type change, reorder, etc.)</td>
+</tr>
+<tr>
+<td><code>SIGNATURE CHANGED</code></td>
+<td>Non-breaking signature change</td>
+</tr>
+</tbody>
+</table>
+<h3 id="change-kinds-in-schema">Change kinds in schema<a class="headerlink" href="#change-kinds-in-schema" title="Permanent link">&para;</a></h3>
+<p>The <code>SymbolChange.kind</code> field uses these values:</p>
+<table>
+<thead>
+<tr>
+<th>Kind</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>function_added</code></td>
+<td>New function</td>
+</tr>
+<tr>
+<td><code>function_removed</code></td>
+<td>Function deleted</td>
+</tr>
+<tr>
+<td><code>function_modified</code></td>
+<td>Function body changed (signature intact)</td>
+</tr>
+<tr>
+<td><code>class_added</code></td>
+<td>New class</td>
+</tr>
+<tr>
+<td><code>class_removed</code></td>
+<td>Class deleted</td>
+</tr>
+<tr>
+<td><code>class_modified</code></td>
+<td>Class body changed (signature intact)</td>
+</tr>
+<tr>
+<td><code>signature_changed</code></td>
+<td>Function/class signature changed (check <code>breaking</code> flag)</td>
+</tr>
+<tr>
+<td><code>moved</code></td>
+<td>Symbol moved to a different file</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exit-codes">Exit codes<a class="headerlink" href="#exit-codes" title="Permanent link">&para;</a></h2>
+<h3 id="review-command"><code>review</code> command<a class="headerlink" href="#review-command" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>No high-signal findings — silence. The agent should move on.</td>
+</tr>
+<tr>
+<td>1</td>
+<td>Findings present — the agent should read the output.</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Error (invalid ref range, git failure, etc.)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="summarize-command"><code>summarize</code> command<a class="headerlink" href="#summarize-command" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>Success</td>
+</tr>
+<tr>
+<td>3</td>
+<td>No changes in diff</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Partial — parse errors in some files</td>
+</tr>
+</tbody>
+</table>
+<h2 id="dependency-scanning">Dependency scanning<a class="headerlink" href="#dependency-scanning" title="Permanent link">&para;</a></h2>
+<p><code>deps.py::find_references()</code> locates callers of changed symbols in files <em>outside</em> the diff:</p>
+<ol>
+<li><strong>Pre-filter with <code>git grep</code></strong> — textually search for symbol names across the repo (fast)</li>
+<li><strong>Confirm with tree-sitter</strong> — parse candidate files, walk the AST for identifier nodes matching symbol names</li>
+<li><strong>Classify context</strong> — each reference is labeled <code>"import"</code> or <code>"call"</code> based on parent node types</li>
+</ol>
+<p>This two-stage approach avoids parsing every file in the repo while maintaining accuracy.</p>
+<h2 id="graceful-degradation">Graceful degradation<a class="headerlink" href="#graceful-degradation" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Unsupported language:</strong> File included in output with <code>unsupported_language: true</code>, line-level stats only.</li>
+<li><strong>Parse error:</strong> File included with <code>parse_error: true</code>, falls back to line-level stats.</li>
+<li><strong>Binary file:</strong> Skipped with <code>binary: true</code>.</li>
+</ul>
+<p>DiffGuard never crashes on unsupported input. It always produces valid JSON.</p>
+<h2 id="stack">Stack<a class="headerlink" href="#stack" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Python</strong> — fast enough with native tree-sitter bindings</li>
+<li><strong>py-tree-sitter</strong> — C-speed parsing, pre-built binaries for 40+ languages</li>
+<li><strong>Pydantic v2</strong> — schema definition and validation</li>
+<li><strong>Click</strong> — CLI framework</li>
+<li><strong>difflib</strong> — per-function body comparison (no GumTree, no full AST diff)</li>
+</ul>
+<h3 id="why-not-these-alternatives">Why not these alternatives<a class="headerlink" href="#why-not-these-alternatives" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Alternative</th>
+<th>Why not</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GumTree</td>
+<td>O(n³), Java dependency, killed v1</td>
+</tr>
+<tr>
+<td>Rust/TypeScript core</td>
+<td>Premature optimization. Python + native tree-sitter is fast enough.</td>
+</tr>
+<tr>
+<td>difftastic</td>
+<td>Line-oriented JSON output, not semantic. Great visual tool, wrong abstraction.</td>
+</tr>
+<tr>
+<td>ast-grep</td>
+<td>Pattern search, not a differ. Possible future add-on.</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "search.highlight", "search.suggest", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
