@@ -154,7 +154,7 @@ diffguard review HEAD~1..HEAD
 
 ## Scope
 
-DiffGuard catches **structural breaks**: signature changes, removed symbols, default value changes. It does **not** catch logic bugs, security issues, or performance problems. See [What DiffGuard is](index.md#what-diffguard-is).
+DiffGuard catches **structural breaks**: signature changes, removed symbols, default value changes. It does **not** catch logic bugs, security issues, or performance problems. See [What it catches](index.md#what-it-catches).
 
 ## Supported languages
 
