@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 
+import pytest
 from click.testing import CliRunner
 
 from diffguard.cli import EXIT_ERROR, EXIT_FINDINGS, EXIT_SUCCESS, main
+
+# Tests that run against the live repo may fail in CI (shallow clone, no code changes in HEAD~1)
+_skip_in_ci = pytest.mark.skipif(
+    os.environ.get("CI") == "true",
+    reason="Requires real repo history with code changes",
+)
 
 
 def _init_repo(tmp_path):
@@ -24,24 +32,28 @@ def _init_repo(tmp_path):
 class TestReviewCommand:
     """End-to-end tests for the review command."""
 
+    @_skip_in_ci
     def test_review_on_own_repo(self):
         """Run review on the diffguard repo itself."""
         runner = CliRunner()
         result = runner.invoke(main, ["review", "HEAD~1..HEAD", "--repo", "."])
         assert result.exit_code in (EXIT_SUCCESS, EXIT_FINDINGS)
 
+    @_skip_in_ci
     def test_review_default_ref_range(self):
         """review with no ref_range defaults to HEAD~1..HEAD."""
         runner = CliRunner()
         result = runner.invoke(main, ["review", "--repo", "."])
         assert result.exit_code in (EXIT_SUCCESS, EXIT_FINDINGS)
 
+    @_skip_in_ci
     def test_review_verbose_on_own_repo(self):
         """With --verbose, always shows output even if no high-signal changes."""
         runner = CliRunner()
         result = runner.invoke(main, ["review", "HEAD~1..HEAD", "--repo", ".", "--verbose"])
         assert result.exit_code in (EXIT_SUCCESS, EXIT_FINDINGS)
 
+    @_skip_in_ci
     def test_review_no_deps(self):
         """Run review with --no-deps flag."""
         runner = CliRunner()
@@ -191,12 +203,14 @@ class TestReviewCommand:
 class TestContextAlias:
     """Ensure the `context` command still works as a hidden alias."""
 
+    @_skip_in_ci
     def test_context_still_works(self):
         """context command is still accessible."""
         runner = CliRunner()
         result = runner.invoke(main, ["context", "HEAD~1..HEAD", "--repo", "."])
         assert result.exit_code in (EXIT_SUCCESS, EXIT_FINDINGS)
 
+    @_skip_in_ci
     def test_context_with_json(self):
         """context alias supports --format json."""
         runner = CliRunner()
@@ -212,6 +226,7 @@ class TestContextAlias:
         assert "review" in result.output
         assert "context" not in result.output
 
+    @_skip_in_ci
     def test_context_default_ref_range(self):
         """context alias also defaults to HEAD~1..HEAD."""
         runner = CliRunner()
