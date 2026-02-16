@@ -10,7 +10,7 @@ import sys
 import click
 
 from diffguard import __version__
-from diffguard.engine.deps import find_references
+from diffguard.engine.deps import Reference, find_references
 from diffguard.engine.pipeline import FileContentProvider, run_pipeline
 from diffguard.git import get_diff, get_file_at_ref
 from diffguard.schema import FileChange, DiffGuardOutput, SymbolChange
@@ -168,7 +168,7 @@ def summarize(
 
 def _has_high_signal_changes(
     output: DiffGuardOutput,
-    dep_refs: list | None = None,
+    dep_refs: list[Reference] | None = None,
 ) -> bool:
     """Check if there are any high-signal changes worth reporting."""
     for fc in output.files:
@@ -245,10 +245,9 @@ def _shorten_paths(paths: list[str]) -> list[str]:
 def _format_context_output(
     output: DiffGuardOutput,
     ref_range: str,
-    dep_refs: list | None = None,
+    dep_refs: list[Reference] | None = None,
 ) -> str:
     """Format pipeline output as actionable review instructions."""
-    from diffguard.engine.deps import Reference
     from diffguard.engine.summarizer import is_test_file
 
     # Collect high-signal changes
@@ -331,11 +330,11 @@ def _format_context_output(
         # Show test callers compactly
         if test_refs:
             # Group by file
-            by_file: dict[str, int] = {}
+            by_file_test: dict[str, int] = {}
             for r in test_refs:
                 fname = r.file_path.rsplit("/", 1)[-1]
-                by_file[fname] = by_file.get(fname, 0) + 1
-            parts = [f"{f} ({n} call{'s' if n != 1 else ''})" for f, n in by_file.items()]
+                by_file_test[fname] = by_file_test.get(fname, 0) + 1
+            parts = [f"{f} ({n} call{'s' if n != 1 else ''})" for f, n in by_file_test.items()]
             lines.append(f"   Callers: {', '.join(parts)}")
 
         # Review instruction
@@ -405,10 +404,9 @@ def _sig_display(sc: SymbolChange) -> str:
 def _build_json_output(
     output: DiffGuardOutput,
     ref_range: str,
-    dep_refs: list | None = None,
+    dep_refs: list[Reference] | None = None,
 ) -> str:
     """Build structured JSON output for the review command."""
-    from diffguard.engine.deps import Reference
     from diffguard.engine.summarizer import is_test_file
 
     dep_map: dict[str, list[Reference]] = {}
@@ -444,7 +442,7 @@ def _build_json_output(
                     }
                 )
 
-            finding: dict = {
+            finding: dict[str, object] = {
                 "category": category.replace(" ", "_"),
                 "symbol": sc.name,
                 "file": fc.path,
