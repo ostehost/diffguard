@@ -22,44 +22,8 @@ def _generate_diff_and_sources(n_functions: int = 50) -> tuple[str, str, str]:
 
     for i in range(n_functions):
         # Old version
-        old_lines.extend([
-            f"def func_{i}(x: int, y: str = 'default') -> dict[str, Any]:",
-            f'    """Function {i}."""',
-            f"    result: dict[str, Any] = {{'idx': {i}}}",
-            "    for j in range(x):",
-            "        result[f'k{{j}}'] = j",
-            "    return result",
-            "",
-            "",
-        ])
-
-        if i < n_functions // 2:
-            # Modified functions — body change
-            new_lines.extend([
-                f"def func_{i}(x: int, y: str = 'default') -> dict[str, Any]:",
-                f'    """Function {i} (updated)."""',
-                f"    result: dict[str, Any] = {{'idx': {i}, 'v': 2}}",
-                "    for j in range(x):",
-                "        result[f'k{{j}}'] = j * 2",
-                "    return result",
-                "",
-                "",
-            ])
-            diff_lines.extend([
-                f"@@ -{i * 8 + 4},{8} +{i * 8 + 4},{8} @@",
-                f" def func_{i}(x: int, y: str = 'default') -> dict[str, Any]:",
-                f'-    """Function {i}."""',
-                f'+    """Function {i} (updated)."""',
-                f"-    result: dict[str, Any] = {{'idx': {i}}}",
-                f"+    result: dict[str, Any] = {{'idx': {i}, 'v': 2}}",
-                "     for j in range(x):",
-                "-        result[f'k{j}'] = j",
-                "+        result[f'k{j}'] = j * 2",
-                "     return result",
-            ])
-        else:
-            # Unchanged
-            new_lines.extend([
+        old_lines.extend(
+            [
                 f"def func_{i}(x: int, y: str = 'default') -> dict[str, Any]:",
                 f'    """Function {i}."""',
                 f"    result: dict[str, Any] = {{'idx': {i}}}",
@@ -68,23 +32,71 @@ def _generate_diff_and_sources(n_functions: int = 50) -> tuple[str, str, str]:
                 "    return result",
                 "",
                 "",
-            ])
+            ]
+        )
+
+        if i < n_functions // 2:
+            # Modified functions — body change
+            new_lines.extend(
+                [
+                    f"def func_{i}(x: int, y: str = 'default') -> dict[str, Any]:",
+                    f'    """Function {i} (updated)."""',
+                    f"    result: dict[str, Any] = {{'idx': {i}, 'v': 2}}",
+                    "    for j in range(x):",
+                    "        result[f'k{{j}}'] = j * 2",
+                    "    return result",
+                    "",
+                    "",
+                ]
+            )
+            diff_lines.extend(
+                [
+                    f"@@ -{i * 8 + 4},{8} +{i * 8 + 4},{8} @@",
+                    f" def func_{i}(x: int, y: str = 'default') -> dict[str, Any]:",
+                    f'-    """Function {i}."""',
+                    f'+    """Function {i} (updated)."""',
+                    f"-    result: dict[str, Any] = {{'idx': {i}}}",
+                    f"+    result: dict[str, Any] = {{'idx': {i}, 'v': 2}}",
+                    "     for j in range(x):",
+                    "-        result[f'k{j}'] = j",
+                    "+        result[f'k{j}'] = j * 2",
+                    "     return result",
+                ]
+            )
+        else:
+            # Unchanged
+            new_lines.extend(
+                [
+                    f"def func_{i}(x: int, y: str = 'default') -> dict[str, Any]:",
+                    f'    """Function {i}."""',
+                    f"    result: dict[str, Any] = {{'idx': {i}}}",
+                    "    for j in range(x):",
+                    "        result[f'k{{j}}'] = j",
+                    "    return result",
+                    "",
+                    "",
+                ]
+            )
 
     # Add some new functions at end
     for i in range(5):
-        new_lines.extend([
-            f"def new_func_{i}(a: int) -> int:",
-            f'    """New function {i}."""',
-            f"    return a + {i}",
-            "",
-        ])
-        diff_lines.extend([
-            f"@@ -0,0 +{len(new_lines) - 4},{4} @@",
-            f"+def new_func_{i}(a: int) -> int:",
-            f'+    """New function {i}."""',
-            f"+    return a + {i}",
-            "+",
-        ])
+        new_lines.extend(
+            [
+                f"def new_func_{i}(a: int) -> int:",
+                f'    """New function {i}."""',
+                f"    return a + {i}",
+                "",
+            ]
+        )
+        diff_lines.extend(
+            [
+                f"@@ -0,0 +{len(new_lines) - 4},{4} @@",
+                f"+def new_func_{i}(a: int) -> int:",
+                f'+    """New function {i}."""',
+                f"+    return a + {i}",
+                "+",
+            ]
+        )
 
     old_src = "\n".join(old_lines)
     new_src = "\n".join(new_lines)

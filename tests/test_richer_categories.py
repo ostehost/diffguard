@@ -32,19 +32,27 @@ class TestClassifySignatureChange:
         assert classify_signature_change("def f(a)", "def f(a, b=1)") == "SIGNATURE CHANGED"
 
     def test_return_type_changed(self):
-        assert classify_signature_change("def f(a) -> int", "def f(a) -> str") == "RETURN TYPE CHANGED"
+        assert (
+            classify_signature_change("def f(a) -> int", "def f(a) -> str") == "RETURN TYPE CHANGED"
+        )
 
     def test_default_value_changed(self):
         assert classify_signature_change("def f(a=1)", "def f(a=2)") == "DEFAULT VALUE CHANGED"
 
     def test_breaking_type_change(self):
-        assert classify_signature_change("def f(a: int)", "def f(a: str)") == "BREAKING SIGNATURE CHANGE"
+        assert (
+            classify_signature_change("def f(a: int)", "def f(a: str)")
+            == "BREAKING SIGNATURE CHANGE"
+        )
 
     def test_no_change(self):
         assert classify_signature_change("def f(a)", "def f(a)") == "SIGNATURE CHANGED"
 
     def test_kwonly_added_breaking(self):
-        assert classify_signature_change("def f(a, *)", "def f(a, *, k)") == "PARAMETER ADDED (BREAKING)"
+        assert (
+            classify_signature_change("def f(a, *)", "def f(a, *, k)")
+            == "PARAMETER ADDED (BREAKING)"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -55,7 +63,9 @@ class TestClassifySignatureChange:
 def _init_repo(tmp_path):
     repo = str(tmp_path)
     subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
-    subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True, check=True
+    )
     subprocess.run(["git", "config", "user.name", "T"], cwd=repo, capture_output=True, check=True)
     return repo
 
@@ -68,7 +78,9 @@ class TestRicherCategoriesCLI:
         subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True, check=True)
         (tmp_path / "lib.py").write_text("def helper(a):\n    return a\n")
         subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "remove param"], cwd=repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "remove param"], cwd=repo, capture_output=True, check=True
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["review", "HEAD~1..HEAD", "--repo", repo])
@@ -82,7 +94,9 @@ class TestRicherCategoriesCLI:
         subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True, check=True)
         (tmp_path / "lib.py").write_text("def helper(a, b):\n    return a + b\n")
         subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "add required param"], cwd=repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "add required param"], cwd=repo, capture_output=True, check=True
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["review", "HEAD~1..HEAD", "--repo", repo, "--format", "json"])
@@ -97,7 +111,9 @@ class TestRicherCategoriesCLI:
         subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True, check=True)
         (tmp_path / "lib.py").write_text("def helper(a) -> str:\n    return str(a)\n")
         subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "change return type"], cwd=repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "change return type"], cwd=repo, capture_output=True, check=True
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["review", "HEAD~1..HEAD", "--repo", repo])
@@ -113,7 +129,9 @@ class TestRicherCategoriesCLI:
         # Change default AND add a new optional param so pipeline detects signature change
         (tmp_path / "lib.py").write_text("def helper(a, b=2, c=3):\n    return a + b + c\n")
         subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "change default"], cwd=repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "change default"], cwd=repo, capture_output=True, check=True
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["review", "HEAD~1..HEAD", "--repo", repo])
@@ -128,7 +146,9 @@ class TestRicherCategoriesCLI:
         subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True, check=True)
         (tmp_path / "lib.py").write_text("def helper(a, b):\n    return a + b\n")
         subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "add param"], cwd=repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "add param"], cwd=repo, capture_output=True, check=True
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["review", "HEAD~1..HEAD", "--repo", repo, "--format", "json"])

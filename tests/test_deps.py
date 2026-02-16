@@ -66,11 +66,15 @@ class TestFindReferencesIntegration:
         subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
         subprocess.run(
             ["git", "config", "user.email", "test@test.com"],
-            cwd=repo, capture_output=True, check=True,
+            cwd=repo,
+            capture_output=True,
+            check=True,
         )
         subprocess.run(
             ["git", "config", "user.name", "Test"],
-            cwd=repo, capture_output=True, check=True,
+            cwd=repo,
+            capture_output=True,
+            check=True,
         )
 
         # Create files
@@ -81,7 +85,9 @@ class TestFindReferencesIntegration:
         subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
         subprocess.run(
             ["git", "commit", "-m", "init"],
-            cwd=repo, capture_output=True, check=True,
+            cwd=repo,
+            capture_output=True,
+            check=True,
         )
 
         refs = find_references(
@@ -102,8 +108,12 @@ class TestFindReferencesIntegration:
 
         repo = str(tmp_path)
         subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "config", "user.name", "T"], cwd=repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True, check=True
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "T"], cwd=repo, capture_output=True, check=True
+        )
 
         (tmp_path / "a.py").write_text("def foo(): pass\nfoo()\n")
         subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
@@ -136,8 +146,12 @@ class TestGitGrepPreFilter:
 
         repo = str(tmp_path)
         subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "config", "user.name", "T"], cwd=repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True, check=True
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "T"], cwd=repo, capture_output=True, check=True
+        )
 
         (tmp_path / "a.py").write_text("def helper(): pass\n")
         (tmp_path / "b.py").write_text("helper()\n")
@@ -156,8 +170,12 @@ class TestGitGrepPreFilter:
 
         repo = str(tmp_path)
         subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "config", "user.name", "T"], cwd=repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True, check=True
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "T"], cwd=repo, capture_output=True, check=True
+        )
 
         # Create many files, only 1 references the symbol
         for i in range(20):

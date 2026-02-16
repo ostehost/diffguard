@@ -2,6 +2,7 @@
 
 All git subprocess calls live here. Nothing else touches git.
 """
+
 from __future__ import annotations
 
 import logging
@@ -39,6 +40,7 @@ DEFAULT_GENERATED_PATTERNS: tuple[str, ...] = (
 @dataclass(frozen=True)
 class HunkHeader:
     """Parsed @@ header."""
+
     old_start: int
     old_count: int
     new_start: int
@@ -49,6 +51,7 @@ class HunkHeader:
 @dataclass(frozen=True)
 class DiffLine:
     """A single line from a diff hunk."""
+
     origin: Literal["+", "-", " "]
     content: str
     old_lineno: int | None = None
@@ -58,6 +61,7 @@ class DiffLine:
 @dataclass
 class DiffHunk:
     """A contiguous hunk."""
+
     header: HunkHeader
     lines: list[DiffLine] = field(default_factory=list)
 
@@ -65,6 +69,7 @@ class DiffHunk:
 @dataclass
 class FileDiff:
     """Parsed diff for a single file."""
+
     old_path: str | None  # None for new files
     new_path: str | None  # None for deleted files
     change_type: Literal["added", "removed", "modified"]
@@ -84,9 +89,8 @@ class FileDiff:
     def deletions(self) -> int:
         return sum(1 for h in self.hunks for ln in h.lines if ln.origin == "-")
 
-_HUNK_RE = re.compile(
-    r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)?$"
-)
+
+_HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)?$")
 
 
 def is_generated(path: str, patterns: tuple[str, ...] = DEFAULT_GENERATED_PATTERNS) -> bool:
@@ -110,9 +114,7 @@ def parse_diff(
     *,
     skip_generated: bool = False,
 ) -> list[FileDiff]:
-    """Parse unified diff text into structured FileDiff objects.
-
-    """
+    """Parse unified diff text into structured FileDiff objects."""
     files: list[FileDiff] = []
     lines = diff_text.split("\n")
     i = 0
@@ -223,22 +225,34 @@ def parse_diff(
                 while i < len(lines) and not lines[i].startswith(("diff --git ", "@@")):
                     dl = lines[i]
                     if dl.startswith("+"):
-                        hunk.lines.append(DiffLine(
-                            origin="+", content=dl[1:],
-                            old_lineno=None, new_lineno=new_ln,
-                        ))
+                        hunk.lines.append(
+                            DiffLine(
+                                origin="+",
+                                content=dl[1:],
+                                old_lineno=None,
+                                new_lineno=new_ln,
+                            )
+                        )
                         new_ln += 1
                     elif dl.startswith("-"):
-                        hunk.lines.append(DiffLine(
-                            origin="-", content=dl[1:],
-                            old_lineno=old_ln, new_lineno=None,
-                        ))
+                        hunk.lines.append(
+                            DiffLine(
+                                origin="-",
+                                content=dl[1:],
+                                old_lineno=old_ln,
+                                new_lineno=None,
+                            )
+                        )
                         old_ln += 1
                     elif dl.startswith(" "):
-                        hunk.lines.append(DiffLine(
-                            origin=" ", content=dl[1:],
-                            old_lineno=old_ln, new_lineno=new_ln,
-                        ))
+                        hunk.lines.append(
+                            DiffLine(
+                                origin=" ",
+                                content=dl[1:],
+                                old_lineno=old_ln,
+                                new_lineno=new_ln,
+                            )
+                        )
                         old_ln += 1
                         new_ln += 1
                     elif dl.startswith("\\ No newline at end of file"):
@@ -253,10 +267,14 @@ def parse_diff(
                                 ("diff --git ", "@@", "+", "-", " ", "\\ ")
                             ):
                                 # empty context line
-                                hunk.lines.append(DiffLine(
-                                    origin=" ", content="",
-                                    old_lineno=old_ln, new_lineno=new_ln,
-                                ))
+                                hunk.lines.append(
+                                    DiffLine(
+                                        origin=" ",
+                                        content="",
+                                        old_lineno=old_ln,
+                                        new_lineno=new_ln,
+                                    )
+                                )
                                 old_ln += 1
                                 new_ln += 1
                             else:
@@ -280,9 +298,7 @@ def get_diff(
     ref_range: str,
     repo_path: str | Path = ".",
 ) -> str:
-    """Run git diff and return raw unified diff text.
-
-    """
+    """Run git diff and return raw unified diff text."""
     result = subprocess.run(
         ["git", "diff", "--no-renames", ref_range],
         capture_output=True,

@@ -175,10 +175,7 @@ def build_tiered_summary(
 
     all_changes = _all_changes_sorted(files)
     if not all_changes:
-        n = sum(
-            1 for f in files
-            if not f.generated and not f.binary and not f.unsupported_language
-        )
+        n = sum(1 for f in files if not f.generated and not f.binary and not f.unsupported_language)
         if n == 0:
             return TieredSummary(
                 oneliner="No substantive code changes.",
@@ -203,7 +200,10 @@ def build_tiered_summary(
         short = _build_short(prod_changes, summary)
 
     detailed = _build_detailed(
-        prod_files, test_files, files, summary,
+        prod_files,
+        test_files,
+        files,
+        summary,
         show_skipped=show_skipped,
     )
 
@@ -233,7 +233,9 @@ def _unsupported_warning(
         exts.add(ext if ext else f.path.rsplit("/", 1)[-1])
     sorted_exts = ", ".join(sorted(exts))
     n = len(unsupported)
-    return f"⚠ {n} file{'s' if n != 1 else ''} skipped (unsupported: {sorted_exts}) — review manually"
+    return (
+        f"⚠ {n} file{'s' if n != 1 else ''} skipped (unsupported: {sorted_exts}) — review manually"
+    )
 
 
 def _build_oneliner(
@@ -275,8 +277,13 @@ def _build_short(
     for _, c in sorted_changes:
         if c.breaking:
             continue
-        if c.kind in ("function_added", "class_added", "function_removed",
-                       "class_removed", "signature_changed"):
+        if c.kind in (
+            "function_added",
+            "class_added",
+            "function_removed",
+            "class_removed",
+            "signature_changed",
+        ):
             behavioural.append(f"`{c.name}` ({c.kind.split('_')[-1]})")
         if len(behavioural) >= 4:
             break
@@ -366,9 +373,7 @@ def _build_detailed(
     if summary.breaking_changes:
         lines.append("## Breaking Changes")
         for c in summary.breaking_changes:
-            lines.append(
-                f"- `{c.name}`: {c.before_signature} → {c.after_signature}"
-            )
+            lines.append(f"- `{c.name}`: {c.before_signature} → {c.after_signature}")
         lines.append("")
 
     # Production changes (capped)
@@ -383,7 +388,9 @@ def _build_detailed(
     if test_changes:
         lines.append("## Test Changes")
         test_emitted = _emit_change_sections(
-            test_changes, lines, cap=_DETAILED_CAP - emitted if emitted < _DETAILED_CAP else 5,
+            test_changes,
+            lines,
+            cap=_DETAILED_CAP - emitted if emitted < _DETAILED_CAP else 5,
         )
         remaining_test = len(test_changes) - test_emitted
         remaining_prod += remaining_test
@@ -394,18 +401,11 @@ def _build_detailed(
 
     # Skipped files (opt-in)
     if show_skipped:
-        skipped = [
-            f for f in all_files
-            if f.generated or f.binary or f.unsupported_language
-        ]
+        skipped = [f for f in all_files if f.generated or f.binary or f.unsupported_language]
         if skipped:
             lines.append("## Skipped")
             for f in skipped:
-                reason = (
-                    "generated" if f.generated
-                    else "binary" if f.binary
-                    else "unsupported"
-                )
+                reason = "generated" if f.generated else "binary" if f.binary else "unsupported"
                 lines.append(f"- {f.path} ({reason})")
             lines.append("")
 

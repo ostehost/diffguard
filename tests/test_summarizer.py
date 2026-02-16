@@ -13,7 +13,11 @@ from diffguard.schema import FileChange, SymbolChange
 
 def _fc(path: str, changes: list[SymbolChange], **kwargs: object) -> FileChange:
     return FileChange(
-        path=path, change_type="modified", language="python", changes=changes, **kwargs  # type: ignore[arg-type]
+        path=path,
+        change_type="modified",
+        language="python",
+        changes=changes,
+        **kwargs,  # type: ignore[arg-type]
     )
 
 
@@ -58,11 +62,14 @@ class TestIsTestFile:
 
 def test_build_summary_counts() -> None:
     files = [
-        _fc("a.py", [
-            SymbolChange(kind="function_added", name="foo"),
-            SymbolChange(kind="function_added", name="bar"),
-            SymbolChange(kind="function_modified", name="baz"),
-        ]),
+        _fc(
+            "a.py",
+            [
+                SymbolChange(kind="function_added", name="foo"),
+                SymbolChange(kind="function_added", name="bar"),
+                SymbolChange(kind="function_modified", name="baz"),
+            ],
+        ),
     ]
     s = build_summary(files)
     assert s.change_types["function_added"] == 2
@@ -72,14 +79,18 @@ def test_build_summary_counts() -> None:
 
 def test_build_summary_breaking() -> None:
     files = [
-        _fc("a.py", [
-            SymbolChange(
-                kind="signature_changed", name="run",
-                before_signature="def run(x: int) -> None",
-                after_signature="def run(x: int, y: int) -> None",
-                breaking=True,
-            ),
-        ]),
+        _fc(
+            "a.py",
+            [
+                SymbolChange(
+                    kind="signature_changed",
+                    name="run",
+                    before_signature="def run(x: int) -> None",
+                    after_signature="def run(x: int, y: int) -> None",
+                    breaking=True,
+                ),
+            ],
+        ),
     ]
     s = build_summary(files)
     assert len(s.breaking_changes) == 1
@@ -95,11 +106,19 @@ def test_focus_max_five() -> None:
 
 def test_focus_breaking_first() -> None:
     files = [
-        _fc("a.py", [
-            SymbolChange(kind="function_added", name="foo"),
-            SymbolChange(kind="signature_changed", name="bar", breaking=True,
-                         before_signature="def bar()", after_signature="def bar(x: int)"),
-        ]),
+        _fc(
+            "a.py",
+            [
+                SymbolChange(kind="function_added", name="foo"),
+                SymbolChange(
+                    kind="signature_changed",
+                    name="bar",
+                    breaking=True,
+                    before_signature="def bar()",
+                    after_signature="def bar(x: int)",
+                ),
+            ],
+        ),
     ]
     s = build_summary(files)
     assert "BREAKING" in s.focus[0]
@@ -117,10 +136,18 @@ def test_tiered_empty() -> None:
 
 def test_tiered_oneliner_breaking() -> None:
     files = [
-        _fc("a.py", [
-            SymbolChange(kind="signature_changed", name="run", breaking=True,
-                         before_signature="def run()", after_signature="def run(x: int)"),
-        ]),
+        _fc(
+            "a.py",
+            [
+                SymbolChange(
+                    kind="signature_changed",
+                    name="run",
+                    breaking=True,
+                    before_signature="def run()",
+                    after_signature="def run(x: int)",
+                ),
+            ],
+        ),
     ]
     s = build_summary(files)
     t = build_tiered_summary(files, s)
@@ -129,9 +156,12 @@ def test_tiered_oneliner_breaking() -> None:
 
 def test_tiered_short_refactor_only() -> None:
     files = [
-        _fc("a.py", [
-            SymbolChange(kind="function_modified", name="helper"),
-        ]),
+        _fc(
+            "a.py",
+            [
+                SymbolChange(kind="function_modified", name="helper"),
+            ],
+        ),
     ]
     s = build_summary(files)
     t = build_tiered_summary(files, s)
@@ -140,10 +170,13 @@ def test_tiered_short_refactor_only() -> None:
 
 def test_tiered_detailed_sections() -> None:
     files = [
-        _fc("a.py", [
-            SymbolChange(kind="function_added", name="new_fn"),
-            SymbolChange(kind="function_removed", name="old_fn"),
-        ]),
+        _fc(
+            "a.py",
+            [
+                SymbolChange(kind="function_added", name="new_fn"),
+                SymbolChange(kind="function_removed", name="old_fn"),
+            ],
+        ),
     ]
     s = build_summary(files)
     t = build_tiered_summary(files, s)

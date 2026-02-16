@@ -118,10 +118,17 @@ def match_cross_file(
                     continue
                 # Guard: require matching signature or body hash to avoid
                 # false-positive moves between unrelated same-named symbols.
-                if old_sym.signature != new_sym.signature and old_sym.body_hash != new_sym.body_hash:
+                if (
+                    old_sym.signature != new_sym.signature
+                    and old_sym.body_hash != new_sym.body_hash
+                ):
                     continue
                 if new_file != old_file:
-                    results.append(MatchedSymbol(old=old_sym, new=new_sym, file_from=old_file, file_to=new_file))
+                    results.append(
+                        MatchedSymbol(
+                            old=old_sym, new=new_sym, file_from=old_file, file_to=new_file
+                        )
+                    )
                     matched_new.add(id(new_sym))
                     break
 

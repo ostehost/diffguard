@@ -147,7 +147,7 @@ def classify_signature_change(old_signature: str, new_signature: str) -> str:
 
     # New positional params without defaults
     if len(new_pos) > len(old_pos):
-        added = new_pos[len(old_pos):]
+        added = new_pos[len(old_pos) :]
         if any(not _param_has_default(p) for p in added):
             return "PARAMETER ADDED (BREAKING)"
 
@@ -210,7 +210,7 @@ def is_breaking_change(old_signature: str, new_signature: str) -> bool:
 
     # New positional params added — breaking only if they lack defaults
     if len(new_pos) > len(old_pos):
-        added = new_pos[len(old_pos):]
+        added = new_pos[len(old_pos) :]
         if any(not _param_has_default(p) for p in added):
             return True
 

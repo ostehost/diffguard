@@ -14,7 +14,9 @@ def _init_repo(tmp_path):
     """Initialize a git repo in tmp_path."""
     repo = str(tmp_path)
     subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
-    subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True, check=True
+    )
     subprocess.run(["git", "config", "user.name", "T"], cwd=repo, capture_output=True, check=True)
     return repo
 
@@ -56,7 +58,9 @@ class TestReviewCommand:
 
         (tmp_path / "lib.py").write_text("def helper():\n    return 42\n")
         subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "change body"], cwd=repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "change body"], cwd=repo, capture_output=True, check=True
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["review", "HEAD~1..HEAD", "--repo", repo])
@@ -74,7 +78,9 @@ class TestReviewCommand:
 
         (tmp_path / "lib.py").write_text("def helper(a, b):\n    return a + b\n")
         subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "add param"], cwd=repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "add param"], cwd=repo, capture_output=True, check=True
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["review", "HEAD~1..HEAD", "--repo", repo])
@@ -94,7 +100,9 @@ class TestReviewCommand:
 
         (tmp_path / "lib.py").write_text("def helper(a, b):\n    return a + b\n")
         subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "add param"], cwd=repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "add param"], cwd=repo, capture_output=True, check=True
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["review", "HEAD~1..HEAD", "--repo", repo, "--format", "json"])
@@ -120,7 +128,9 @@ class TestReviewCommand:
 
         (tmp_path / "lib.py").write_text("def helper():\n    return 42\n")
         subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "change body"], cwd=repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "change body"], cwd=repo, capture_output=True, check=True
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["review", "HEAD~1..HEAD", "--repo", repo, "--format", "json"])
@@ -133,13 +143,17 @@ class TestReviewCommand:
         """Removed symbol should produce output with exit 1."""
         repo = _init_repo(tmp_path)
 
-        (tmp_path / "lib.py").write_text("def helper():\n    return 1\n\ndef old_func():\n    pass\n")
+        (tmp_path / "lib.py").write_text(
+            "def helper():\n    return 1\n\ndef old_func():\n    pass\n"
+        )
         subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
         subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True, check=True)
 
         (tmp_path / "lib.py").write_text("def helper():\n    return 1\n")
         subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "remove old_func"], cwd=repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "remove old_func"], cwd=repo, capture_output=True, check=True
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["review", "HEAD~1..HEAD", "--repo", repo])
@@ -150,7 +164,9 @@ class TestReviewCommand:
     def test_error_exit_code(self, tmp_path):
         """Invalid repo should exit with code 2."""
         runner = CliRunner()
-        result = runner.invoke(main, ["review", "HEAD~1..HEAD", "--repo", str(tmp_path / "nonexistent")])
+        result = runner.invoke(
+            main, ["review", "HEAD~1..HEAD", "--repo", str(tmp_path / "nonexistent")]
+        )
         assert result.exit_code == EXIT_ERROR
 
     def test_verbose_shows_output_for_body_changes(self, tmp_path):
@@ -163,7 +179,9 @@ class TestReviewCommand:
 
         (tmp_path / "lib.py").write_text("def helper():\n    return 42\n")
         subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "change body"], cwd=repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "change body"], cwd=repo, capture_output=True, check=True
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["review", "HEAD~1..HEAD", "--repo", repo, "--verbose"])

@@ -128,9 +128,7 @@ def test_partial_success(mock_pipeline: MagicMock) -> None:
 @patch("diffguard.cli.run_pipeline")
 def test_no_generated(mock_pipeline: MagicMock) -> None:
     mock_pipeline.return_value = _make_output(generated=False)
-    result = runner.invoke(
-        main, ["summarize", "--diff", "-", "--no-generated"], input=SAMPLE_DIFF
-    )
+    result = runner.invoke(main, ["summarize", "--diff", "-", "--no-generated"], input=SAMPLE_DIFF)
     assert result.exit_code == EXIT_SUCCESS
     # Verify skip_generated=True was passed through to run_pipeline
     mock_pipeline.assert_called_once()

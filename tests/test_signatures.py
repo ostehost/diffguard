@@ -32,8 +32,8 @@ class TestExtractParams:
     def test_return_type_complex(self) -> None:
         """Regression: complex return types should not be truncated."""
         from diffguard.engine.signatures import _extract_return_type
-        assert _extract_return_type("def foo() -> dict[str, int]") == "dict[str, int]"
 
+        assert _extract_return_type("def foo() -> dict[str, int]") == "dict[str, int]"
 
     def test_dict_literal_default(self) -> None:
         params = extract_params('def foo(x: dict = {"a": 1, "b": 2}, y: int = 0)')

@@ -18,11 +18,11 @@ from diffguard.schema import FileChange, DiffGuardOutput, SymbolChange
 logger = logging.getLogger(__name__)
 
 # Exit codes
-EXIT_SUCCESS = 0      # No high-signal findings (silence)
-EXIT_FINDINGS = 1     # Findings present — agent should read output
-EXIT_ERROR = 2        # Something went wrong
-EXIT_NO_CHANGES = 3   # No changes in diff (summarize command)
-EXIT_PARTIAL = 4      # Parse errors in some files (summarize command)
+EXIT_SUCCESS = 0  # No high-signal findings (silence)
+EXIT_FINDINGS = 1  # Findings present — agent should read output
+EXIT_ERROR = 2  # Something went wrong
+EXIT_NO_CHANGES = 3  # No changes in diff (summarize command)
+EXIT_PARTIAL = 4  # Parse errors in some files (summarize command)
 
 
 def _make_content_provider(repo_path: str) -> FileContentProvider:
@@ -272,7 +272,9 @@ def _format_context_output(
         for ref in dep_refs:
             dep_map.setdefault(ref.symbol_name, []).append(ref)
 
-    lines: list[str] = [f"⚠ DiffGuard: {len(items)} change{'s' if len(items) != 1 else ''} need{'s' if len(items) == 1 else ''} review"]
+    lines: list[str] = [
+        f"⚠ DiffGuard: {len(items)} change{'s' if len(items) != 1 else ''} need{'s' if len(items) == 1 else ''} review"
+    ]
     lines.append("")
 
     for idx, (fc, sc) in enumerate(items, 1):
@@ -293,7 +295,9 @@ def _format_context_output(
 
         if sc.breaking:
             if prod_refs:
-                lines.append(f"   Impact: {len(prod_refs)} caller{'s' if len(prod_refs) != 1 else ''} rely on the default:")
+                lines.append(
+                    f"   Impact: {len(prod_refs)} caller{'s' if len(prod_refs) != 1 else ''} rely on the default:"
+                )
                 for r in prod_refs[:5]:
                     short_path = r.file_path.rsplit("/", 1)[-1]
                     lines.append(f"     {short_path}:{r.line}  `{r.source_line}`")
@@ -306,14 +310,18 @@ def _format_context_output(
                 for r in prod_refs:
                     fname = r.file_path.rsplit("/", 1)[-1]
                     by_file[fname] = by_file.get(fname, 0) + 1
-                caller_parts = [f"{f} ({n} call{'s' if n != 1 else ''})" for f, n in by_file.items()]
+                caller_parts = [
+                    f"{f} ({n} call{'s' if n != 1 else ''})" for f, n in by_file.items()
+                ]
                 lines.append("   Impact: Backward-compatible (new kwarg has default)")
                 lines.append(f"   Callers: {', '.join(caller_parts)}")
             else:
                 lines.append("   Impact: Backward-compatible (new kwarg has default)")
         elif sc.kind.endswith("_removed"):
             if prod_refs:
-                lines.append(f"   Impact: {len(prod_refs)} caller{'s' if len(prod_refs) != 1 else ''} will break:")
+                lines.append(
+                    f"   Impact: {len(prod_refs)} caller{'s' if len(prod_refs) != 1 else ''} will break:"
+                )
                 for r in prod_refs[:5]:
                     short_path = r.file_path.rsplit("/", 1)[-1]
                     lines.append(f"     {short_path}:{r.line}  `{r.source_line}`")
@@ -378,7 +386,7 @@ def _sig_display(sc: SymbolChange) -> str:
         """Strip leading def/class/func/function keyword for compact display."""
         for kw in ("def ", "class ", "func ", "function "):
             if sig.startswith(kw):
-                sig = sig[len(kw):]
+                sig = sig[len(kw) :]
                 break
         # Strip return type annotation and trailing colon for compactness
         sig = re.sub(r"\)\s*->.*$", ")", sig)
@@ -428,11 +436,13 @@ def _build_json_output(
 
             callers = []
             for r in (prod_refs + test_refs)[:10]:
-                callers.append({
-                    "file": r.file_path,
-                    "line": r.line,
-                    "source": r.source_line,
-                })
+                callers.append(
+                    {
+                        "file": r.file_path,
+                        "line": r.line,
+                        "source": r.source_line,
+                    }
+                )
 
             finding: dict = {
                 "category": category.replace(" ", "_"),
@@ -476,12 +486,21 @@ def _run_review(ref_range: str, repo: str, deps: bool, verbose: bool, fmt: str) 
 
         if not diff_text.strip():
             if fmt == "json":
-                click.echo(json.dumps({
-                    "version": "0.1.0",
-                    "ref_range": ref_range,
-                    "findings": [],
-                    "stats": {"files_analyzed": 0, "symbols_changed": 0, "silence_reason": "no changes in diff"},
-                }, indent=2))
+                click.echo(
+                    json.dumps(
+                        {
+                            "version": "0.1.0",
+                            "ref_range": ref_range,
+                            "findings": [],
+                            "stats": {
+                                "files_analyzed": 0,
+                                "symbols_changed": 0,
+                                "silence_reason": "no changes in diff",
+                            },
+                        },
+                        indent=2,
+                    )
+                )
             else:
                 click.echo("No changes found.", err=True)
             sys.exit(EXIT_SUCCESS)
@@ -535,8 +554,15 @@ def _run_review(ref_range: str, repo: str, deps: bool, verbose: bool, fmt: str) 
 @main.command()
 @click.argument("ref_range", required=False, default=None)
 @click.option("--repo", default=".", help="Repository path (default: current directory).")
-@click.option("--deps/--no-deps", default=True, help="Enable dependency scanning (default: enabled).")
-@click.option("--verbose", is_flag=True, default=False, help="Show full output even when no high-signal changes.")
+@click.option(
+    "--deps/--no-deps", default=True, help="Enable dependency scanning (default: enabled)."
+)
+@click.option(
+    "--verbose",
+    is_flag=True,
+    default=False,
+    help="Show full output even when no high-signal changes.",
+)
 @click.option(
     "--format",
     "fmt",
@@ -567,8 +593,15 @@ def review(ref_range: str | None, repo: str, deps: bool, verbose: bool, fmt: str
 @main.command(hidden=True)
 @click.argument("ref_range", required=False, default=None)
 @click.option("--repo", default=".", help="Repository path (default: current directory).")
-@click.option("--deps/--no-deps", default=True, help="Enable dependency scanning (default: enabled).")
-@click.option("--verbose", is_flag=True, default=False, help="Show full output even when no high-signal changes.")
+@click.option(
+    "--deps/--no-deps", default=True, help="Enable dependency scanning (default: enabled)."
+)
+@click.option(
+    "--verbose",
+    is_flag=True,
+    default=False,
+    help="Show full output even when no high-signal changes.",
+)
 @click.option(
     "--format",
     "fmt",

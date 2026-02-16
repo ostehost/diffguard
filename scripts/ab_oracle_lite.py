@@ -49,7 +49,9 @@ def get_diffguard_context(repo_path, ref_range):
     diffguard = Path(__file__).parent.parent / ".venv" / "bin" / "diffguard"
     result = subprocess.run(
         [str(diffguard), "context", ref_range, "--repo", str(repo_path)],
-        capture_output=True, text=True, cwd=repo_path,
+        capture_output=True,
+        text=True,
+        cwd=repo_path,
     )
     return result.stdout
 
@@ -58,12 +60,14 @@ def call_claude(system, user_content):
     """Call Claude API and return the response text."""
     import urllib.request
 
-    body = json.dumps({
-        "model": MODEL,
-        "max_tokens": 4096,
-        "messages": [{"role": "user", "content": user_content}],
-        "system": system,
-    })
+    body = json.dumps(
+        {
+            "model": MODEL,
+            "max_tokens": 4096,
+            "messages": [{"role": "user", "content": user_content}],
+            "system": system,
+        }
+    )
 
     req = urllib.request.Request(
         "https://api.anthropic.com/v1/messages",
@@ -81,10 +85,10 @@ def call_claude(system, user_content):
 
 
 def run_test(name, repo_path, ref_range):
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"TEST: {name}")
     print(f"Repo: {repo_path}, Range: {ref_range}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     diff = get_diff(repo_path, ref_range)
     context = get_diffguard_context(repo_path, ref_range)
@@ -96,15 +100,14 @@ def run_test(name, repo_path, ref_range):
     # A: baseline (diff only)
     print("Running baseline review (diff only)...")
     review_a = call_claude(
-        REVIEW_PROMPT,
-        f"Here is the git diff to review:\n\n```diff\n{diff[:50000]}\n```"
+        REVIEW_PROMPT, f"Here is the git diff to review:\n\n```diff\n{diff[:50000]}\n```"
     )
 
     # B: treatment (context + diff)
     print("Running treatment review (context + diff)...")
     review_b = call_claude(
         REVIEW_PROMPT,
-        f"Here is structured context about the changes:\n\n{context}\n\nHere is the full git diff:\n\n```diff\n{diff[:50000]}\n```"
+        f"Here is structured context about the changes:\n\n{context}\n\nHere is the full git diff:\n\n```diff\n{diff[:50000]}\n```",
     )
 
     # Output

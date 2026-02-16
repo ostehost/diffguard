@@ -70,7 +70,8 @@ def run_pipeline(
 
     summary = build_summary(file_changes)
     tiered = build_tiered_summary(
-        file_changes, summary,
+        file_changes,
+        summary,
         include_tests=include_tests,
         show_skipped=show_skipped,
     )
@@ -178,9 +179,7 @@ def _apply_moves(
     move_changes = _classify(moves)
     # Build a mapping from move change name to source/destination paths
     move_paths = {
-        m.old.name: (m.file_from, m.file_to)
-        for m in moves
-        if m.old and m.file_from and m.file_to
+        m.old.name: (m.file_from, m.file_to) for m in moves if m.old and m.file_from and m.file_to
     }
     # Index file_changes by path
     fc_map = {fc.path: fc for fc in file_changes}
@@ -196,7 +195,8 @@ def _apply_moves(
             fc = fc_map.get(p)
             if fc is not None:
                 fc.changes = [
-                    c for c in fc.changes
+                    c
+                    for c in fc.changes
                     if not (c.name == mc.name and c.kind.endswith(("_added", "_removed")))
                 ]
         # Attach move change to the destination file

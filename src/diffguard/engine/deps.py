@@ -97,7 +97,7 @@ def _scan_file_for_symbols(
 
     def _walk(node: tree_sitter.Node) -> None:
         if node.type in id_types:
-            name = source_bytes[node.start_byte:node.end_byte].decode("utf-8")
+            name = source_bytes[node.start_byte : node.end_byte].decode("utf-8")
             if name in symbol_names:
                 line = node.start_point.row + 1
                 ctx = "import" if _is_import_context(node) else "call"
