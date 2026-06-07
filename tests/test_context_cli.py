@@ -26,6 +26,9 @@ def _init_repo(tmp_path):
         ["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True, check=True
     )
     subprocess.run(["git", "config", "user.name", "T"], cwd=repo, capture_output=True, check=True)
+    subprocess.run(
+        ["git", "config", "core.hooksPath", ""], cwd=repo, capture_output=True, check=True
+    )
     return repo
 
 

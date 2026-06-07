@@ -10,6 +10,25 @@ from diffguard.engine.deps import (
 )
 
 
+def _init_git_repo(repo: str, *, email: str = "t@t.com", name: str = "T") -> None:
+    """Initialize a hermetic temp repo for tests.
+
+    Test repositories must not inherit the operator's global git hooks; otherwise
+    local commit-msg policy can make otherwise portable tests fail.
+    """
+
+    import subprocess
+
+    subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", email], cwd=repo, capture_output=True, check=True
+    )
+    subprocess.run(["git", "config", "user.name", name], cwd=repo, capture_output=True, check=True)
+    subprocess.run(
+        ["git", "config", "core.hooksPath", ""], cwd=repo, capture_output=True, check=True
+    )
+
+
 class TestScanFileForSymbols:
     """Unit tests for _scan_file_for_symbols."""
 
@@ -63,19 +82,7 @@ class TestFindReferencesIntegration:
 
         # Create a small test repo
         repo = str(tmp_path)
-        subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(
-            ["git", "config", "user.email", "test@test.com"],
-            cwd=repo,
-            capture_output=True,
-            check=True,
-        )
-        subprocess.run(
-            ["git", "config", "user.name", "Test"],
-            cwd=repo,
-            capture_output=True,
-            check=True,
-        )
+        _init_git_repo(repo, email="test@test.com", name="Test")
 
         # Create files
         (tmp_path / "lib.py").write_text("def helper():\n    return 42\n")
@@ -107,13 +114,7 @@ class TestFindReferencesIntegration:
         import subprocess
 
         repo = str(tmp_path)
-        subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(
-            ["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True, check=True
-        )
-        subprocess.run(
-            ["git", "config", "user.name", "T"], cwd=repo, capture_output=True, check=True
-        )
+        _init_git_repo(repo)
 
         (tmp_path / "a.py").write_text("def foo(): pass\nfoo()\n")
         subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
@@ -145,13 +146,7 @@ class TestGitGrepPreFilter:
         import subprocess
 
         repo = str(tmp_path)
-        subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(
-            ["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True, check=True
-        )
-        subprocess.run(
-            ["git", "config", "user.name", "T"], cwd=repo, capture_output=True, check=True
-        )
+        _init_git_repo(repo)
 
         (tmp_path / "a.py").write_text("def helper(): pass\n")
         (tmp_path / "b.py").write_text("helper()\n")
@@ -169,13 +164,7 @@ class TestGitGrepPreFilter:
         import subprocess
 
         repo = str(tmp_path)
-        subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(
-            ["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True, check=True
-        )
-        subprocess.run(
-            ["git", "config", "user.name", "T"], cwd=repo, capture_output=True, check=True
-        )
+        _init_git_repo(repo)
 
         # Create many files, only 1 references the symbol
         for i in range(20):

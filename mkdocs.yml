@@ -34,6 +34,7 @@ nav:
   - Schema Reference: schema.md
   - Architecture: architecture.md
   - Roadmap: roadmap.md
+  - Standards Adoption Kit: adoption-kit.md
 
 markdown_extensions:
   - pymdownx.highlight:

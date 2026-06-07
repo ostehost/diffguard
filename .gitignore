@@ -4,8 +4,14 @@ __pycache__/
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
+.tox/
+.nox/
 dist/
+build/
+htmlcov/
 *.egg-info/
 .venv/
+venv/
 site/
+.clawpatch/
 STRESS_TEST_RESULTS.md
