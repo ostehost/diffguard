@@ -19,7 +19,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
     
     
       
@@ -727,6 +727,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#self-review-gate-ranges" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Self-review gate ranges
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#repo-local-rules" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -787,6 +798,17 @@
     <span class="md-ellipsis">
       
         15-minute local checklist
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#self-review-gate-ranges" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Self-review gate ranges
       
     </span>
   </a>
@@ -867,6 +889,11 @@
 <a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>uv<span class="w"> </span>build
 <a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>uv<span class="w"> </span>run<span class="w"> </span>diffguard<span class="w"> </span>review<span class="w"> </span>origin/main..HEAD<span class="w"> </span>--format<span class="w"> </span>json<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">test</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$?</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">1</span>
 </code></pre></div>
+<h2 id="self-review-gate-ranges">Self-review gate ranges<a class="headerlink" href="#self-review-gate-ranges" title="Permanent link">&para;</a></h2>
+<p>CI validates <code>diffguard review --format json</code> output without failing on exit <code>1</code>, because that
+status means findings were present rather than the tool failed. Pull request checks compare the PR
+base commit to the checked-out head. Push checks compare the previous pushed commit to the new head;
+new branches fall back to the default branch as the base.</p>
 <h2 id="repo-local-rules">Repo-local rules<a class="headerlink" href="#repo-local-rules" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>uv.lock</code> is committed and checked with <code>uv lock --check</code>; CI installs through <code>uv sync --group dev --group docs</code> or an equivalent locked sync.</li>
