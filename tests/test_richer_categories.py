@@ -173,7 +173,10 @@ class TestInstallHook:
         hook_path = tmp_path / ".git" / "hooks" / "pre-push"
         assert hook_path.exists()
         assert os.access(str(hook_path), os.X_OK)
-        assert "diffguard review" in hook_path.read_text()
+        hook_text = hook_path.read_text()
+        assert "diffguard review" in hook_text
+        assert "elif [ $status -ne 0 ]" in hook_text
+        assert "blocking push" in hook_text
 
     def test_install_pre_commit(self, tmp_path):
         repo = _init_repo(tmp_path)
@@ -182,7 +185,11 @@ class TestInstallHook:
         assert result.exit_code == EXIT_SUCCESS
         hook_path = tmp_path / ".git" / "hooks" / "pre-commit"
         assert hook_path.exists()
-        assert "diffguard review" in hook_path.read_text()
+        hook_text = hook_path.read_text()
+        assert "diffguard review --staged --no-deps" in hook_text
+        assert "diffguard review HEAD" not in hook_text
+        assert "elif [ $status -ne 0 ]" in hook_text
+        assert "blocking commit" in hook_text
 
     def test_no_overwrite_without_force(self, tmp_path):
         repo = _init_repo(tmp_path)

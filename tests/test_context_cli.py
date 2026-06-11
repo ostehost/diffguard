@@ -202,6 +202,41 @@ class TestReviewCommand:
         result = runner.invoke(main, ["review", "HEAD~1..HEAD", "--repo", repo, "--verbose"])
         assert result.exit_code in (EXIT_SUCCESS, EXIT_FINDINGS)
 
+    def test_staged_review_uses_index_not_worktree(self, tmp_path):
+        """--staged analyzes the index and ignores unstaged working tree edits."""
+        repo = _init_repo(tmp_path)
+
+        (tmp_path / "lib.py").write_text("def helper(a):\n    return a\n")
+        subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True, check=True)
+
+        (tmp_path / "lib.py").write_text("def helper(a, b):\n    return a + b\n")
+        subprocess.run(["git", "add", "lib.py"], cwd=repo, capture_output=True, check=True)
+        (tmp_path / "lib.py").write_text("def helper(a, b=1):\n    return a + b\n")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["review", "--staged", "--no-deps", "--repo", repo, "--format", "json"],
+        )
+
+        assert result.exit_code == EXIT_FINDINGS
+        data = json.loads(result.output)
+        assert data["ref_range"] == "HEAD..:index"
+        assert data["findings"]
+        assert "def helper(a, b)" in data["findings"][0]["after_signature"]
+        assert "b=1" not in data["findings"][0]["after_signature"]
+
+    def test_staged_review_rejects_ref_range(self, tmp_path):
+        """--staged has one unambiguous source: the git index."""
+        repo = _init_repo(tmp_path)
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["review", "HEAD", "--staged", "--repo", repo])
+
+        assert result.exit_code == EXIT_ERROR
+        assert "--staged cannot be combined with a ref range" in result.output
+
 
 class TestContextAlias:
     """Ensure the `context` command still works as a hidden alias."""

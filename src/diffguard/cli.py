@@ -12,7 +12,7 @@ import click
 from diffguard import __version__
 from diffguard.engine.deps import Reference, find_references
 from diffguard.engine.pipeline import FileContentProvider, run_pipeline
-from diffguard.git import get_diff, get_file_at_ref
+from diffguard.git import get_diff, get_file_at_ref, get_file_from_index, get_staged_diff
 from diffguard.schema import FileChange, DiffGuardOutput, SymbolChange
 
 logger = logging.getLogger(__name__)
@@ -29,6 +29,17 @@ def _make_content_provider(repo_path: str) -> FileContentProvider:
     """Create a file content provider bound to a repo path."""
 
     def _get(ref: str, file_path: str) -> str | None:
+        return get_file_at_ref(ref, file_path, repo_path=repo_path)
+
+    return _get
+
+
+def _make_staged_content_provider(repo_path: str) -> FileContentProvider:
+    """Create a content provider that compares HEAD to the git index."""
+
+    def _get(ref: str, file_path: str) -> str | None:
+        if ref == ":index":
+            return get_file_from_index(file_path, repo_path=repo_path)
         return get_file_at_ref(ref, file_path, repo_path=repo_path)
 
     return _get
@@ -477,10 +488,24 @@ def _build_json_output(
     return json.dumps(result, indent=2)
 
 
-def _run_review(ref_range: str, repo: str, deps: bool, verbose: bool, fmt: str) -> None:
+def _run_review(
+    ref_range: str,
+    repo: str,
+    deps: bool,
+    verbose: bool,
+    fmt: str,
+    *,
+    staged: bool = False,
+) -> None:
     """Shared implementation for review/context commands."""
     try:
-        diff_text = get_diff(ref_range, repo_path=repo)
+        if staged:
+            diff_text = get_staged_diff(repo_path=repo)
+            ref_range = "HEAD..:index"
+            content_provider = _make_staged_content_provider(repo)
+        else:
+            diff_text = get_diff(ref_range, repo_path=repo)
+            content_provider = _make_content_provider(repo)
 
         if not diff_text.strip():
             if fmt == "json":
@@ -503,11 +528,12 @@ def _run_review(ref_range: str, repo: str, deps: bool, verbose: bool, fmt: str) 
                 click.echo("No changes found.", err=True)
             sys.exit(EXIT_SUCCESS)
 
-        content_provider = _make_content_provider(repo)
         output = run_pipeline(diff_text, ref_range, content_provider)
 
         dep_refs = None
-        if deps:
+        # Staged review compares HEAD to the index; dependency scanning currently
+        # works on committed refs, so pre-commit mode analyzes only the staged diff.
+        if deps and not staged:
             changed_symbols = []
             changed_files = set()
             for fc in output.files:
@@ -568,7 +594,20 @@ def _run_review(ref_range: str, repo: str, deps: bool, verbose: bool, fmt: str) 
     default="text",
     help="Output format: 'text' for human-readable review, 'json' for structured output.",
 )
-def review(ref_range: str | None, repo: str, deps: bool, verbose: bool, fmt: str) -> None:
+@click.option(
+    "--staged",
+    is_flag=True,
+    default=False,
+    help="Review staged/index changes for pre-commit use.",
+)
+def review(
+    ref_range: str | None,
+    repo: str,
+    deps: bool,
+    verbose: bool,
+    fmt: str,
+    staged: bool,
+) -> None:
     """Analyze git changes and surface high-signal findings for code review.
 
     REF_RANGE: Git ref range like HEAD~3..HEAD or main..feature.
@@ -583,9 +622,12 @@ def review(ref_range: str | None, repo: str, deps: bool, verbose: bool, fmt: str
       1 — Findings present (read the output)
       2 — Error
     """
+    if staged and ref_range is not None:
+        click.echo("Error: --staged cannot be combined with a ref range", err=True)
+        sys.exit(EXIT_ERROR)
     if ref_range is None:
         ref_range = "HEAD~1..HEAD"
-    _run_review(ref_range, repo, deps, verbose, fmt)
+    _run_review(ref_range, repo, deps, verbose, fmt, staged=staged)
 
 
 @main.command(hidden=True)
@@ -642,6 +684,10 @@ while read local_ref local_sha remote_ref remote_sha; do
         echo "DiffGuard found changes that need review (see above)."
         echo "Push anyway with: git push --no-verify"
         exit 1
+    elif [ $status -ne 0 ]; then
+        echo ""
+        echo "DiffGuard failed with exit $status; blocking push."
+        exit $status
     fi
 done
 
@@ -684,14 +730,18 @@ def install_hook(repo: str, hook_type: str, force: bool) -> None:
 # DiffGuard pre-commit hook — runs diffguard review on staged changes
 # Installed by: diffguard install-hook
 
-echo "Running diffguard review HEAD ..."
-diffguard review HEAD
+echo "Running diffguard review --staged --no-deps ..."
+diffguard review --staged --no-deps
 status=$?
 if [ $status -eq 1 ]; then
     echo ""
     echo "DiffGuard found changes that need review (see above)."
     echo "Commit anyway with: git commit --no-verify"
     exit 1
+elif [ $status -ne 0 ]; then
+    echo ""
+    echo "DiffGuard failed with exit $status; blocking commit."
+    exit $status
 fi
 
 exit 0

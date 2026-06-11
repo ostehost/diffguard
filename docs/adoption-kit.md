@@ -35,6 +35,13 @@ uv build
 uv run diffguard review origin/main..HEAD --format json || test "$?" = 1
 ```
 
+## Self-review gate ranges
+
+CI validates `diffguard review --format json` output without failing on exit `1`, because that
+status means findings were present rather than the tool failed. Pull request checks compare the PR
+base commit to the checked-out head. Push checks compare the previous pushed commit to the new head;
+new branches fall back to the default branch as the base.
+
 ## Repo-local rules
 
 - `uv.lock` is committed and checked with `uv lock --check`; CI installs through `uv sync --group dev --group docs` or an equivalent locked sync.

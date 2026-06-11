@@ -10,8 +10,10 @@ Outputs both reviews for manual blind comparison.
 
 import json
 import os
+import shlex
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -36,27 +38,36 @@ Focus on:
 Be thorough. List ALL issues, even minor ones."""
 
 
-def run_cmd(cmd, cwd=None):
-    result = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
+def _format_cmd(cmd: Sequence[str]) -> str:
+    return " ".join(shlex.quote(part) for part in cmd)
+
+
+def run_cmd(cmd: Sequence[str], cwd: str | Path | None = None) -> str:
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd, check=False)
+    if result.returncode != 0:
+        stderr = result.stderr.strip()
+        stdout = result.stdout.strip()
+        detail = stderr or stdout or "no stderr/stdout captured"
+        location = f" in {cwd}" if cwd is not None else ""
+        raise RuntimeError(
+            f"Command failed with exit {result.returncode}{location}: {_format_cmd(cmd)}\n{detail}"
+        )
     return result.stdout
 
 
-def get_diff(repo_path, ref_range):
+def get_diff(repo_path: str | Path, ref_range: str) -> str:
     return run_cmd(["git", "diff", ref_range], cwd=repo_path)
 
 
-def get_diffguard_context(repo_path, ref_range):
+def get_diffguard_context(repo_path: str | Path, ref_range: str) -> str:
     diffguard = Path(__file__).parent.parent / ".venv" / "bin" / "diffguard"
-    result = subprocess.run(
+    return run_cmd(
         [str(diffguard), "context", ref_range, "--repo", str(repo_path)],
-        capture_output=True,
-        text=True,
         cwd=repo_path,
     )
-    return result.stdout
 
 
-def call_claude(system, user_content):
+def call_claude(system: str, user_content: str) -> str:
     """Call Claude API and return the response text."""
     import urllib.request
 
@@ -84,7 +95,7 @@ def call_claude(system, user_content):
         return data["content"][0]["text"]
 
 
-def run_test(name, repo_path, ref_range):
+def run_test(name: str, repo_path: str | Path, ref_range: str) -> tuple[str, str]:
     print(f"\n{'=' * 60}")
     print(f"TEST: {name}")
     print(f"Repo: {repo_path}, Range: {ref_range}")

@@ -92,7 +92,7 @@ build:
     uv build
 
 docs-build:
-    uv run mkdocs build
+    uv run mkdocs build --strict
 
 docs-serve:
     uv run mkdocs serve

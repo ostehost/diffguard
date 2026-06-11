@@ -5,9 +5,45 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: extractions/setup-just@v2
       - uses: astral-sh/setup-uv@v5
-      - run: uv sync --dev
-      - run: uv run ruff check
-      - run: uv run ruff format --check
-      - run: uv run mypy src/
-      - run: uv run pytest
+      - run: uv sync --locked --group dev --group docs
+      - run: uv lock --check
+      - run: just ci
+      - name: DiffGuard self-review JSON gate
+        run: |
+          zero=0000000000000000000000000000000000000000
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # Pull requests compare the PR base commit to the checked-out head.
+            range="${{ github.event.pull_request.base.sha }}..${{ github.sha }}"
+          elif [ "${{ github.event.before }}" != "$zero" ]; then
+            # Pushes compare the previous pushed commit to the new commit.
+            range="${{ github.event.before }}..${{ github.sha }}"
+          else
+            default_branch="${{ github.event.repository.default_branch }}"
+            git fetch origin "$default_branch" --depth=1
+            range="origin/$default_branch..${{ github.sha }}"
+          fi
+
+          set +e
+          uv run diffguard review "$range" --format json > diffguard-self-review.json
+          status=$?
+          set -e
+
+          if ! uv run python -m json.tool diffguard-self-review.json > /dev/null; then
+            echo "::error::DiffGuard self-review did not produce valid JSON"
+            cat diffguard-self-review.json
+            exit 1
+          fi
+
+          if [ "$status" -eq 0 ]; then
+            echo "DiffGuard self-review passed with no findings."
+          elif [ "$status" -eq 1 ]; then
+            echo "DiffGuard self-review produced findings; JSON output is valid."
+          else
+            echo "::error::DiffGuard self-review failed with exit $status"
+            exit "$status"
+          fi
