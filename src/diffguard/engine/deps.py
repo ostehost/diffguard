@@ -6,27 +6,14 @@ tree-sitter scanning that confirms textual matches are real references.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import tree_sitter
 
+from diffguard.engine._types import Reference
 from diffguard.git import get_file_at_ref, grep_files, list_files_at_ref
 from diffguard.languages import detect_language, get_parser
 
 # File globs the git-grep pre-filter restricts to (the supported languages).
 _GREP_GLOBS = ("*.py", "*.ts", "*.js", "*.go", "*.tsx", "*.jsx")
-
-
-@dataclass(frozen=True)
-class Reference:
-    """A reference to a symbol found in a non-diff file."""
-
-    file_path: str
-    line: int
-    symbol_name: str
-    context: str  # "import" or "call"
-    source_line: str = ""  # the actual source line (stripped)
-
 
 # Identifier node types per language
 _IDENTIFIER_TYPES: dict[str, set[str]] = {

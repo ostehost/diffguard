@@ -7,7 +7,7 @@ presentation and orchestration.
 
 from __future__ import annotations
 
-from diffguard.engine.deps import Reference
+from diffguard.engine._types import Reference
 from diffguard.engine.findings import (
     Finding,
     categorize_change,

@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import re
 
-from diffguard.engine.deps import Reference
+from diffguard.engine._types import Reference
 from diffguard.engine.findings import Finding
 from diffguard.schema import DiffGuardOutput, SymbolChange
 

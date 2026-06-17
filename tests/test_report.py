@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 
-from diffguard.engine.deps import Reference
+from diffguard.engine._types import Reference
 from diffguard.engine.findings import Finding
 from diffguard.report import (
     render_empty_json,

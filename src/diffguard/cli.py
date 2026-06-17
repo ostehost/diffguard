@@ -9,7 +9,8 @@ import click
 
 from diffguard import __version__, hooks, report
 from diffguard.engine._refs import split_ref_range
-from diffguard.engine.deps import Reference, find_references
+from diffguard.engine._types import Reference
+from diffguard.engine.deps import find_references
 from diffguard.engine.findings import extract_findings, has_high_signal
 from diffguard.engine.pipeline import FileContentProvider, run_pipeline
 from diffguard.git import get_diff, get_file_at_ref, get_file_from_index, get_staged_diff

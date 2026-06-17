@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from diffguard.engine._paths import is_test_file
-from diffguard.engine.deps import Reference
+from diffguard.engine._types import Reference
 from diffguard.engine.signatures import classify_signature_change
 from diffguard.schema import DiffGuardOutput, FileChange, SymbolChange
 

@@ -30,6 +30,17 @@ class ParseResult:
     error_message: str | None = None
 
 
+@dataclass(frozen=True)
+class Reference:
+    """A reference to a symbol found in a non-diff file."""
+
+    file_path: str
+    line: int
+    symbol_name: str
+    context: str  # "import" or "call"
+    source_line: str = ""  # the actual source line (stripped)
+
+
 def compute_body_hash(body: str) -> str:
     """Compute hash of body text, normalized to ignore whitespace differences."""
     normalized = re.sub(r"\s+", " ", body.strip())
