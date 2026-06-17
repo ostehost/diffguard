@@ -14,10 +14,13 @@ The review command outputs a flat list of high-signal findings. When there are n
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `version` | `str` | Schema version (currently `"0.1.0"`) |
+| `version` | `str` | Schema version (currently `"0.2.0"`) |
 | `ref_range` | `str` | Git ref range analyzed |
 | `findings` | `list[Finding]` | High-signal findings (may be empty) |
 | `stats` | `ReviewStats` | Analysis statistics |
+
+> **Migration note (0.1.0 → 0.2.0):** added `stats.parse_errors`. This is an
+> additive field; consumers that ignore unknown fields are unaffected.
 
 ### `ReviewStats`
 
@@ -25,6 +28,7 @@ The review command outputs a flat list of high-signal findings. When there are n
 |-------|------|-------------|
 | `files_analyzed` | `int` | Number of files analyzed |
 | `symbols_changed` | `int` | Total symbol-level changes detected |
+| `parse_errors` | `int` | Number of analyzed files tree-sitter could not parse |
 | `silence_reason` | `str | null` | Why no findings were reported (null if findings exist) |
 
 ### `Finding`
@@ -60,7 +64,7 @@ The review command outputs a flat list of high-signal findings. When there are n
 
 ```json
 {
-  "version": "0.1.0",
+  "version": "0.2.0",
   "ref_range": "eca5fd1d~1..eca5fd1d",
   "findings": [
     {
@@ -83,6 +87,7 @@ The review command outputs a flat list of high-signal findings. When there are n
   "stats": {
     "files_analyzed": 2,
     "symbols_changed": 2,
+    "parse_errors": 0,
     "silence_reason": null
   }
 }

@@ -63,7 +63,7 @@ Returns a complete structural summary of the diff (~200-300 tokens). Always prod
 
 ```json
 {
-  "version": "0.1.0",
+  "version": "0.2.0",
   "ref_range": "main..HEAD",
   "findings": [
     {
@@ -84,6 +84,7 @@ Returns a complete structural summary of the diff (~200-300 tokens). Always prod
   "stats": {
     "files_analyzed": 5,
     "symbols_changed": 8,
+    "parse_errors": 0,
     "silence_reason": null
   }
 }

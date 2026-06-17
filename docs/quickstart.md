@@ -58,12 +58,13 @@ When there are no findings:
 
 ```json
 {
-  "version": "0.1.0",
+  "version": "0.2.0",
   "ref_range": "HEAD~1..HEAD",
   "findings": [],
   "stats": {
     "files_analyzed": 1,
     "symbols_changed": 0,
+    "parse_errors": 0,
     "silence_reason": "no high-signal changes"
   }
 }

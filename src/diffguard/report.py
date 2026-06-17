@@ -14,7 +14,7 @@ from diffguard.engine.deps import Reference
 from diffguard.engine.findings import Finding
 from diffguard.schema import DiffGuardOutput, SymbolChange
 
-_VERSION = "0.1.0"
+_VERSION = "0.2.0"
 _CALLER_LIST_CAP = 5
 _JSON_CALLER_CAP = 10
 
@@ -208,6 +208,7 @@ def render_json(
 ) -> str:
     """Render findings as the structured JSON contract for the review command."""
     symbols_changed = sum(len(fc.changes) for fc in output.files)
+    parse_errors = sum(1 for fc in output.files if fc.parse_error)
     result = {
         "version": _VERSION,
         "ref_range": ref_range,
@@ -215,6 +216,7 @@ def render_json(
         "stats": {
             "files_analyzed": len(output.files),
             "symbols_changed": symbols_changed,
+            "parse_errors": parse_errors,
             "silence_reason": None if findings else "no high-signal changes",
         },
     }
@@ -230,6 +232,7 @@ def render_empty_json(ref_range: str, silence_reason: str) -> str:
         "stats": {
             "files_analyzed": 0,
             "symbols_changed": 0,
+            "parse_errors": 0,
             "silence_reason": silence_reason,
         },
     }

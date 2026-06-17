@@ -123,7 +123,7 @@ class TestReviewCommand:
         result = runner.invoke(main, ["review", "HEAD~1..HEAD", "--repo", repo, "--format", "json"])
         assert result.exit_code == EXIT_FINDINGS
         data = json.loads(result.output)
-        assert data["version"] == "0.1.0"
+        assert data["version"] == "0.2.0"
         assert data["ref_range"] == "HEAD~1..HEAD"
         assert len(data["findings"]) > 0
         finding = data["findings"][0]
