@@ -6,6 +6,7 @@ import logging
 import time
 from typing import Callable
 
+from diffguard.engine._refs import split_ref_range
 from diffguard.engine._types import Symbol
 from diffguard.engine.classifier import classify_changes
 from diffguard.engine.matcher import MatchedSymbol, match_cross_file, match_symbols
@@ -124,9 +125,7 @@ def _process_file(
         return FileChange(path=path, language=language, change_type=fd.change_type)
 
     # Resolve refs from ref_range
-    parts = ref_range.split("..")
-    old_ref = parts[0] if len(parts) == 2 else f"{ref_range}~1"  # noqa: PLR2004
-    new_ref = parts[1] if len(parts) == 2 else ref_range  # noqa: PLR2004
+    old_ref, new_ref = split_ref_range(ref_range)
 
     old_source = get_content(old_ref, fd.old_path or "") if fd.old_path else None
     new_source = get_content(new_ref, fd.new_path or "") if fd.new_path else None

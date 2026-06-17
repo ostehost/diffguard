@@ -8,6 +8,7 @@ import sys
 import click
 
 from diffguard import __version__, hooks, report
+from diffguard.engine._refs import split_ref_range
 from diffguard.engine.deps import Reference, find_references
 from diffguard.engine.findings import extract_findings, has_high_signal
 from diffguard.engine.pipeline import FileContentProvider, run_pipeline
@@ -186,8 +187,7 @@ def _scan_dependencies(
     if not changed_symbols:
         return None
 
-    parts = ref_range.split("..")
-    after_ref = parts[1] if len(parts) == 2 else ref_range  # noqa: PLR2004
+    _, after_ref = split_ref_range(ref_range)
     return find_references(
         repo_path=repo,
         changed_symbols=changed_symbols,
