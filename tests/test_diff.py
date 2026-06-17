@@ -1,8 +1,8 @@
-"""Tests for git diff parsing and file retrieval."""
+"""Tests for the unified-diff parser (diffguard.diff)."""
 
 from __future__ import annotations
 
-from diffguard.git import (
+from diffguard.diff import (
     is_generated,
     parse_diff,
 )

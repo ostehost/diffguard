@@ -21,7 +21,8 @@ Each module has a single responsibility. No horizontal imports between engine mo
 | Module | Input | Output | Responsibility |
 |--------|-------|--------|---------------|
 | `cli.py` | CLI args | exit code + JSON/text | Click CLI entry point. Commands: `review`, `summarize`, `context` (hidden alias for review), `install-hook`. Orchestrates: fetch diff → run pipeline → scan deps → extract findings → render. Holds no domain or formatting logic. |
-| `git.py` | ref range | changed files + old/new content | All git subprocess calls. Nothing else touches git. |
+| `git.py` | ref range | raw diff / file text | All git subprocess calls. Nothing else touches git. Returns raw text; does no parsing. |
+| `diff.py` | unified diff text | `list[FileDiff]` | Unified-diff parser (`parse_diff`, `is_generated`, hunk/line model). Pure text parsing, no git access. |
 | `engine/_types.py` | — | — | Shared type aliases and dataclasses (`Symbol`, `ParseResult`, `compute_body_hash`). |
 | `engine/_paths.py` | path string | bool | Shared path classification (`is_test_file`). Used by summarizer and findings. |
 | `engine/parser.py` | source file | syntax tree | Tree-sitter parsing. No git logic, no matching. |

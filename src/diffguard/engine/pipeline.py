@@ -11,7 +11,7 @@ from diffguard.engine.classifier import classify_changes
 from diffguard.engine.matcher import MatchedSymbol, match_cross_file, match_symbols
 from diffguard.engine.parser import parse_file
 from diffguard.engine.summarizer import build_summary, build_tiered_summary
-from diffguard.git import FileDiff, parse_diff
+from diffguard.diff import FileDiff, parse_diff
 from diffguard.languages import detect_language
 from diffguard.schema import (
     DiffStats,
