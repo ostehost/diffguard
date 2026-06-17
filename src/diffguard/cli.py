@@ -7,7 +7,7 @@ import sys
 
 import click
 
-from diffguard import __version__, report
+from diffguard import __version__, hooks, report
 from diffguard.engine.deps import Reference, find_references
 from diffguard.engine.findings import extract_findings, has_high_signal
 from diffguard.engine.pipeline import FileContentProvider, run_pipeline
@@ -334,45 +334,6 @@ def context(ref_range: str | None, repo: str, deps: bool, verbose: bool, fmt: st
     _run_review(ref_range, repo, deps, verbose, fmt)
 
 
-_PRE_PUSH_HOOK = """\
-#!/bin/sh
-# DiffGuard pre-push hook — runs diffguard review on pushed changes
-# Installed by: diffguard install-hook
-
-remote="$1"
-z40=0000000000000000000000000000000000000000
-
-while read local_ref local_sha remote_ref remote_sha; do
-    if [ "$remote_sha" = "$z40" ]; then
-        # New branch — compare against main/master
-        base=$(git rev-parse --verify refs/heads/main 2>/dev/null || git rev-parse --verify refs/heads/master 2>/dev/null || echo "")
-        if [ -z "$base" ]; then
-            continue
-        fi
-        range="$base..$local_sha"
-    else
-        range="$remote_sha..$local_sha"
-    fi
-
-    echo "Running diffguard review $range ..."
-    diffguard review "$range"
-    status=$?
-    if [ $status -eq 1 ]; then
-        echo ""
-        echo "DiffGuard found changes that need review (see above)."
-        echo "Push anyway with: git push --no-verify"
-        exit 1
-    elif [ $status -ne 0 ]; then
-        echo ""
-        echo "DiffGuard failed with exit $status; blocking push."
-        exit $status
-    fi
-done
-
-exit 0
-"""
-
-
 @main.command("install-hook")
 @click.option("--repo", default=".", help="Repository path (default: current directory).")
 @click.option(
@@ -384,52 +345,9 @@ exit 0
 @click.option("--force", is_flag=True, default=False, help="Overwrite existing hook.")
 def install_hook(repo: str, hook_type: str, force: bool) -> None:
     """Install a git hook that runs diffguard review before push/commit."""
-    import os
-    import stat
-
-    git_dir = os.path.join(repo, ".git")
-    if not os.path.isdir(git_dir):
-        click.echo(f"Error: {repo} is not a git repository", err=True)
+    try:
+        hook_path = hooks.install_hook(repo, hook_type, force=force)
+    except hooks.HookError as exc:
+        click.echo(f"Error: {exc}", err=True)
         sys.exit(EXIT_ERROR)
-
-    hooks_dir = os.path.join(git_dir, "hooks")
-    os.makedirs(hooks_dir, exist_ok=True)
-
-    hook_path = os.path.join(hooks_dir, hook_type)
-    if os.path.exists(hook_path) and not force:
-        click.echo(f"Hook already exists: {hook_path}", err=True)
-        click.echo("Use --force to overwrite.", err=True)
-        sys.exit(EXIT_ERROR)
-
-    hook_content = _PRE_PUSH_HOOK
-    if hook_type == "pre-commit":
-        hook_content = """\
-#!/bin/sh
-# DiffGuard pre-commit hook — runs diffguard review on staged changes
-# Installed by: diffguard install-hook
-
-echo "Running diffguard review --staged --no-deps ..."
-diffguard review --staged --no-deps
-status=$?
-if [ $status -eq 1 ]; then
-    echo ""
-    echo "DiffGuard found changes that need review (see above)."
-    echo "Commit anyway with: git commit --no-verify"
-    exit 1
-elif [ $status -ne 0 ]; then
-    echo ""
-    echo "DiffGuard failed with exit $status; blocking commit."
-    exit $status
-fi
-
-exit 0
-"""
-
-    with open(hook_path, "w") as f:
-        f.write(hook_content)
-
-    # Make executable
-    st = os.stat(hook_path)
-    os.chmod(hook_path, st.st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
-
     click.echo(f"Installed {hook_type} hook: {hook_path}")
