@@ -4,11 +4,8 @@ from __future__ import annotations
 
 import tree_sitter
 
-from diffguard.engine._types import ParseResult, Symbol, compute_body_hash
+from diffguard.engine._types import ParseResult
 from diffguard.languages import get_language_module, get_parser
-
-# Re-export for backwards compatibility
-__all__ = ["ParseResult", "Symbol", "compute_body_hash", "parse_file"]
 
 
 def parse_file(source: str, language: str) -> ParseResult:

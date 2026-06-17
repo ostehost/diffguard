@@ -290,7 +290,6 @@ def _emit_change_sections(
     lines: list[str],
     *,
     cap: int | None = None,
-    include_breaking: bool = True,
 ) -> int:
     """Append change sections to *lines*. Returns number of items emitted."""
     sections: dict[str, list[str]] = {
@@ -302,8 +301,6 @@ def _emit_change_sections(
     }
     total = 0
     for path, c in sorted_changes:
-        if c.breaking and not include_breaking:
-            continue
         if c.breaking:
             continue  # breaking handled separately
         if c.kind in ("function_removed", "class_removed"):
