@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
-import json
 import logging
-import re
 import sys
 
 import click
 
-from diffguard import __version__
+from diffguard import __version__, report
 from diffguard.engine.deps import Reference, find_references
+from diffguard.engine.findings import extract_findings, has_high_signal
 from diffguard.engine.pipeline import FileContentProvider, run_pipeline
 from diffguard.git import get_diff, get_file_at_ref, get_file_from_index, get_staged_diff
-from diffguard.schema import FileChange, DiffGuardOutput, SymbolChange
+from diffguard.schema import DiffGuardOutput
 
 logger = logging.getLogger(__name__)
 
@@ -172,300 +171,29 @@ def summarize(
         sys.exit(EXIT_ERROR)
 
 
-# ---------------------------------------------------------------------------
-# context command
-# ---------------------------------------------------------------------------
-
-
-def _has_high_signal_changes(
-    output: DiffGuardOutput,
-    dep_refs: list[Reference] | None = None,
-) -> bool:
-    """Check if there are any high-signal changes worth reporting."""
-    for fc in output.files:
-        for sc in fc.changes:
-            # Signature changes (before != after)
-            if sc.before_signature and sc.after_signature:
-                return True
-            # Breaking changes
-            if sc.breaking:
-                return True
-            # Removed symbols
-            if sc.kind.endswith("_removed"):
-                return True
-            # Moved symbols
-            if sc.kind == "moved":
-                return True
-
-    # External dependency references only matter if we already found
-    # high-signal changes for those symbols (checked above).
-    # Don't trigger on dep_refs alone — body-only changes with callers
-    # are not high-signal.
-
-    return False
-
-
-def _categorize_change(sc: SymbolChange) -> str:
-    """Return a category label for a symbol change."""
-    from diffguard.engine.signatures import classify_signature_change
-
-    if sc.kind.endswith("_removed"):
-        return "SYMBOL REMOVED"
-    if sc.kind == "moved":
-        return "SYMBOL MOVED"
-    if sc.before_signature and sc.after_signature:
-        return classify_signature_change(sc.before_signature, sc.after_signature)
-    return "CHANGED"
-
-
-def _review_hint_for_category(category: str) -> str:
-    """Return a review hint string for a given category."""
-    hints = {
-        "PARAMETER REMOVED": "These callers will break — removed parameter no longer accepted",
-        "PARAMETER ADDED (BREAKING)": "These callers will break — missing required argument",
-        "RETURN TYPE CHANGED": "Callers depending on the return type may break",
-        "DEFAULT VALUE CHANGED": "Verify callers expect the new default value",
-        "BREAKING SIGNATURE CHANGE": "Check all callers handle the new signature",
-        "SIGNATURE CHANGED": "Review the signature change for compatibility",
-        "SYMBOL REMOVED": "Ensure no remaining callers depend on this symbol",
-        "SYMBOL MOVED": "Update imports in dependent files",
-    }
-    return hints.get(category, "Review this change")
-
-
-def _format_context_output(
+def _scan_dependencies(
     output: DiffGuardOutput,
     ref_range: str,
-    dep_refs: list[Reference] | None = None,
-) -> str:
-    """Format pipeline output as actionable review instructions."""
-    from diffguard.engine.summarizer import is_test_file
-
-    # Collect high-signal changes
-    items: list[tuple[FileChange, SymbolChange]] = []
+    repo: str,
+) -> list[Reference] | None:
+    """Find external callers of every changed symbol, or None if there are none."""
+    changed_symbols: list[str] = []
+    changed_files: set[str] = set()
     for fc in output.files:
-        for sc in fc.changes:
-            if (
-                (sc.before_signature and sc.after_signature)
-                or sc.breaking
-                or sc.kind.endswith("_removed")
-                or sc.kind == "moved"
-            ):
-                items.append((fc, sc))
+        changed_files.add(fc.path)
+        changed_symbols.extend(sc.name for sc in fc.changes)
 
-    if not items:
-        return ""
+    if not changed_symbols:
+        return None
 
-    # Build dep lookup: symbol_name -> list of references
-    dep_map: dict[str, list[Reference]] = {}
-    if dep_refs:
-        for ref in dep_refs:
-            dep_map.setdefault(ref.symbol_name, []).append(ref)
-
-    lines: list[str] = [
-        f"⚠ DiffGuard: {len(items)} change{'s' if len(items) != 1 else ''} need{'s' if len(items) == 1 else ''} review"
-    ]
-    lines.append("")
-
-    for idx, (fc, sc) in enumerate(items, 1):
-        category = _categorize_change(sc)
-        sig_text = _sig_display(sc)
-        line_ref = f":{sc.line}" if sc.line else ""
-
-        lines.append(f"{idx}. {category}: {sig_text}")
-        lines.append(f"   File: {fc.path}{line_ref}")
-
-        # Impact section
-        call_refs = dep_map.get(sc.name, [])
-        call_refs = [r for r in call_refs if r.context == "call"]
-
-        # Separate test vs prod callers
-        test_refs = [r for r in call_refs if is_test_file(r.file_path)]
-        prod_refs = [r for r in call_refs if not is_test_file(r.file_path)]
-
-        if sc.breaking:
-            if prod_refs:
-                lines.append(
-                    f"   Impact: {len(prod_refs)} caller{'s' if len(prod_refs) != 1 else ''} rely on the default:"
-                )
-                for r in prod_refs[:5]:
-                    short_path = r.file_path.rsplit("/", 1)[-1]
-                    lines.append(f"     {short_path}:{r.line}  `{r.source_line}`")
-            else:
-                lines.append("   Impact: Breaking change")
-        elif sc.before_signature and sc.after_signature and not sc.breaking:
-            if prod_refs:
-                caller_parts = []
-                by_file: dict[str, int] = {}
-                for r in prod_refs:
-                    fname = r.file_path.rsplit("/", 1)[-1]
-                    by_file[fname] = by_file.get(fname, 0) + 1
-                caller_parts = [
-                    f"{f} ({n} call{'s' if n != 1 else ''})" for f, n in by_file.items()
-                ]
-                lines.append("   Impact: Backward-compatible (new kwarg has default)")
-                lines.append(f"   Callers: {', '.join(caller_parts)}")
-            else:
-                lines.append("   Impact: Backward-compatible (new kwarg has default)")
-        elif sc.kind.endswith("_removed"):
-            if prod_refs:
-                lines.append(
-                    f"   Impact: {len(prod_refs)} caller{'s' if len(prod_refs) != 1 else ''} will break:"
-                )
-                for r in prod_refs[:5]:
-                    short_path = r.file_path.rsplit("/", 1)[-1]
-                    lines.append(f"     {short_path}:{r.line}  `{r.source_line}`")
-            else:
-                lines.append("   Impact: Symbol removed")
-
-        # Show test callers compactly
-        if test_refs:
-            # Group by file
-            by_file_test: dict[str, int] = {}
-            for r in test_refs:
-                fname = r.file_path.rsplit("/", 1)[-1]
-                by_file_test[fname] = by_file_test.get(fname, 0) + 1
-            parts = [f"{f} ({n} call{'s' if n != 1 else ''})" for f, n in by_file_test.items()]
-            lines.append(f"   Callers: {', '.join(parts)}")
-
-        # Review instruction
-        lines.append(f"   Review: {_review_hint_for_category(category)}")
-
-        lines.append("")
-
-    return "\n".join(lines).rstrip()
-
-
-def _sig_display(sc: SymbolChange) -> str:
-    """Format signature change display — compact, one-line."""
-
-    def _compact_sig(sig: str) -> str:
-        """Extract just the def/class line and collapse to one line."""
-        # Strip decorators — find the first 'def ' or 'class ' line
-        for line in sig.split("\n"):
-            stripped = line.strip()
-            if stripped.startswith(("def ", "class ", "func ", "function ")):
-                # If multi-line params, collapse them
-                if "(" in stripped and ")" not in stripped:
-                    # Grab remaining lines until closing paren
-                    start = sig.index(stripped)
-                    rest = sig[start:]
-                    paren_depth = 0
-                    result_chars = []
-                    for ch in rest:
-                        if ch == "(":
-                            paren_depth += 1
-                        elif ch == ")":
-                            paren_depth -= 1
-                        if ch == "\n":
-                            ch = " "
-                        result_chars.append(ch)
-                        if paren_depth == 0 and ch == ")":
-                            # Grab return type if present
-                            remaining = rest[len("".join(result_chars)) :]
-                            arrow = remaining.split("\n")[0].strip()
-                            if arrow.startswith("->"):
-                                result_chars.append(f" {arrow}")
-                            break
-                    return " ".join("".join(result_chars).split())
-                return stripped
-        # Fallback: collapse whole thing
-        return " ".join(sig.split())
-
-    def _strip_keyword(sig: str) -> str:
-        """Strip leading def/class/func/function keyword for compact display."""
-        for kw in ("def ", "class ", "func ", "function "):
-            if sig.startswith(kw):
-                sig = sig[len(kw) :]
-                break
-        # Strip return type annotation and trailing colon for compactness
-        sig = re.sub(r"\)\s*->.*$", ")", sig)
-        sig = sig.rstrip(":")
-        return sig
-
-    if sc.before_signature and sc.after_signature:
-        before = _strip_keyword(_compact_sig(sc.before_signature))
-        after = _strip_keyword(_compact_sig(sc.after_signature))
-        return f"{before} → {after}"
-    if sc.signature:
-        return _strip_keyword(_compact_sig(sc.signature))
-    return f"`{sc.name}`"
-
-
-def _build_json_output(
-    output: DiffGuardOutput,
-    ref_range: str,
-    dep_refs: list[Reference] | None = None,
-) -> str:
-    """Build structured JSON output for the review command."""
-    from diffguard.engine.summarizer import is_test_file
-
-    dep_map: dict[str, list[Reference]] = {}
-    if dep_refs:
-        for ref in dep_refs:
-            dep_map.setdefault(ref.symbol_name, []).append(ref)
-
-    findings = []
-    for fc in output.files:
-        for sc in fc.changes:
-            if not (
-                (sc.before_signature and sc.after_signature)
-                or sc.breaking
-                or sc.kind.endswith("_removed")
-                or sc.kind == "moved"
-            ):
-                continue
-
-            category = _categorize_change(sc)
-
-            call_refs = dep_map.get(sc.name, [])
-            call_refs = [r for r in call_refs if r.context == "call"]
-            test_refs = [r for r in call_refs if is_test_file(r.file_path)]
-            prod_refs = [r for r in call_refs if not is_test_file(r.file_path)]
-
-            callers = []
-            for r in (prod_refs + test_refs)[:10]:
-                callers.append(
-                    {
-                        "file": r.file_path,
-                        "line": r.line,
-                        "source": r.source_line,
-                    }
-                )
-
-            finding: dict[str, object] = {
-                "category": category.replace(" ", "_"),
-                "symbol": sc.name,
-                "file": fc.path,
-                "line": sc.line,
-            }
-            if sc.before_signature:
-                finding["before_signature"] = sc.before_signature.strip()
-            if sc.after_signature:
-                finding["after_signature"] = sc.after_signature.strip()
-
-            finding["impact"] = {
-                "production_callers": len(prod_refs),
-                "test_callers": len(test_refs),
-                "callers": callers,
-            }
-
-            finding["review_hint"] = _review_hint_for_category(category)
-
-            findings.append(finding)
-
-    symbols_changed = sum(len(fc.changes) for fc in output.files)
-    result = {
-        "version": "0.1.0",
-        "ref_range": ref_range,
-        "findings": findings,
-        "stats": {
-            "files_analyzed": len(output.files),
-            "symbols_changed": symbols_changed,
-            "silence_reason": None if findings else "no high-signal changes",
-        },
-    }
-    return json.dumps(result, indent=2)
+    parts = ref_range.split("..")
+    after_ref = parts[1] if len(parts) == 2 else ref_range  # noqa: PLR2004
+    return find_references(
+        repo_path=repo,
+        changed_symbols=changed_symbols,
+        ref=after_ref,
+        changed_files=changed_files,
+    )
 
 
 def _run_review(
@@ -489,59 +217,29 @@ def _run_review(
 
         if not diff_text.strip():
             if fmt == "json":
-                click.echo(
-                    json.dumps(
-                        {
-                            "version": "0.1.0",
-                            "ref_range": ref_range,
-                            "findings": [],
-                            "stats": {
-                                "files_analyzed": 0,
-                                "symbols_changed": 0,
-                                "silence_reason": "no changes in diff",
-                            },
-                        },
-                        indent=2,
-                    )
-                )
+                click.echo(report.render_empty_json(ref_range, "no changes in diff"))
             else:
                 click.echo("No changes found.", err=True)
             sys.exit(EXIT_SUCCESS)
 
         output = run_pipeline(diff_text, ref_range, content_provider)
 
-        dep_refs = None
         # Staged review compares HEAD to the index; dependency scanning currently
         # works on committed refs, so pre-commit mode analyzes only the staged diff.
-        if deps and not staged:
-            changed_symbols = []
-            changed_files = set()
-            for fc in output.files:
-                changed_files.add(fc.path)
-                for sc in fc.changes:
-                    changed_symbols.append(sc.name)
+        dep_refs = _scan_dependencies(output, ref_range, repo) if deps and not staged else None
 
-            if changed_symbols:
-                parts = ref_range.split("..")
-                after_ref = parts[1] if len(parts) == 2 else ref_range  # noqa: PLR2004
-                dep_refs = find_references(
-                    repo_path=repo,
-                    changed_symbols=changed_symbols,
-                    ref=after_ref,
-                    changed_files=changed_files,
-                )
-
-        has_findings = _has_high_signal_changes(output, dep_refs)
+        findings = extract_findings(output, dep_refs)
+        has_findings = has_high_signal(output)
 
         if fmt == "json":
-            click.echo(_build_json_output(output, ref_range, dep_refs))
+            click.echo(report.render_json(output, ref_range, findings))
             sys.exit(EXIT_FINDINGS if has_findings else EXIT_SUCCESS)
 
         # Text format
         if not verbose and not has_findings:
             sys.exit(EXIT_SUCCESS)
 
-        text = _format_context_output(output, ref_range, dep_refs)
+        text = report.render_text(findings)
         if text:
             click.echo(text)
             sys.exit(EXIT_FINDINGS)

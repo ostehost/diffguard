@@ -7,9 +7,9 @@ Priority: breaking changes > new public API > behavioral modifications > structu
 from __future__ import annotations
 
 import os
-import re
 from collections import Counter
 
+from diffguard.engine._paths import is_test_file
 from diffguard.schema import FileChange, Summary, SymbolChange, TieredSummary
 
 # ---- Priority buckets (lower = higher priority) ----
@@ -31,26 +31,7 @@ _KIND_PRIORITY: dict[str, int] = {
     "moved": _P_MOVED,
 }
 
-# ---- Test file detection ----
-_TEST_PATH_RE = re.compile(
-    r"(^|/)(tests?/|spec/|__tests__/)"
-    r"|"
-    r"(^|/)test_[^/]*\.py$"
-    r"|"
-    r"(^|/)[^/]*_test\.py$"
-    r"|"
-    r"(^|/)[^/]*[._]spec\.(ts|js|tsx|jsx)$"
-    r"|"
-    r"(^|/)[^/]*[._]test\.(ts|js|tsx|jsx)$",
-    re.IGNORECASE,
-)
-
 _DETAILED_CAP = 15
-
-
-def is_test_file(path: str) -> bool:
-    """Return True if *path* looks like a test file."""
-    return _TEST_PATH_RE.search(path) is not None
 
 
 def _change_priority(c: SymbolChange) -> int:
