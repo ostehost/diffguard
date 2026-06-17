@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 from diffguard.engine.deps import (
-    _git_grep_files,
+    _candidate_files,
     _scan_file_for_symbols,
     find_references,
 )
@@ -154,7 +154,7 @@ class TestGitGrepPreFilter:
         subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
         subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True, check=True)
 
-        files = _git_grep_files(repo, {"helper"}, "HEAD")
+        files = _candidate_files({"helper"}, "HEAD", repo)
         assert "a.py" in files
         assert "b.py" in files
         assert "c.py" not in files
@@ -173,6 +173,6 @@ class TestGitGrepPreFilter:
         subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
         subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True, check=True)
 
-        files = _git_grep_files(repo, {"target_func"}, "HEAD")
+        files = _candidate_files({"target_func"}, "HEAD", repo)
         assert len(files) == 1
         assert "caller.py" in files

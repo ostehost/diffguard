@@ -1,13 +1,20 @@
-"""Dependency reference scanning — find files that reference changed symbols."""
+"""Dependency reference scanning — find files that reference changed symbols.
+
+Git access is delegated entirely to :mod:`diffguard.git`; this module owns the
+tree-sitter scanning that confirms textual matches are real references.
+"""
 
 from __future__ import annotations
 
-import subprocess
 from dataclasses import dataclass
 
 import tree_sitter
 
+from diffguard.git import get_file_at_ref, grep_files, list_files_at_ref
 from diffguard.languages import detect_language, get_parser
+
+# File globs the git-grep pre-filter restricts to (the supported languages).
+_GREP_GLOBS = ("*.py", "*.ts", "*.js", "*.go", "*.tsx", "*.jsx")
 
 
 @dataclass(frozen=True)
@@ -38,34 +45,6 @@ _IMPORT_PARENT_TYPES: set[str] = {
     "import_declaration",
     "import_spec",
 }
-
-
-def _list_files_at_ref(ref: str, repo_path: str) -> list[str]:
-    """List all tracked files at a git ref."""
-    result = subprocess.run(
-        ["git", "ls-tree", "-r", "--name-only", ref],
-        capture_output=True,
-        text=True,
-        cwd=repo_path,
-        check=False,
-    )
-    if result.returncode != 0:
-        return []
-    return result.stdout.strip().split("\n") if result.stdout.strip() else []
-
-
-def _get_file_content(ref: str, path: str, repo_path: str) -> str | None:
-    """Get file content at a ref."""
-    result = subprocess.run(
-        ["git", "show", f"{ref}:{path}"],
-        capture_output=True,
-        text=True,
-        cwd=repo_path,
-        check=False,
-    )
-    if result.returncode != 0:
-        return None
-    return result.stdout
 
 
 def _is_import_context(node: tree_sitter.Node) -> bool:
@@ -110,38 +89,19 @@ def _scan_file_for_symbols(
     return results
 
 
-def _git_grep_files(
-    repo_path: str,
-    symbols: set[str],
-    ref: str,
-) -> set[str]:
-    """Use git grep to pre-filter files that textually contain any symbol name.
+def _candidate_files(symbols: set[str], ref: str, repo_path: str) -> set[str]:
+    """Pre-filter to files that textually contain any symbol name (git grep).
 
-    Falls back to listing all files if git grep fails.
+    Returns an empty set when git grep is unavailable, signalling the caller to
+    fall back to scanning all files at the ref.
     """
-    candidate_files: set[str] = set()
-    # Supported extensions for grep
-    globs = ["*.py", "*.ts", "*.js", "*.go", "*.tsx", "*.jsx"]
+    candidates: set[str] = set()
     for symbol in symbols:
-        try:
-            result = subprocess.run(
-                ["git", "grep", "-l", symbol, ref, "--"] + globs,
-                capture_output=True,
-                text=True,
-                cwd=repo_path,
-                check=False,
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                for line in result.stdout.strip().split("\n"):
-                    # git grep with ref outputs "ref:path" format
-                    if ":" in line:
-                        candidate_files.add(line.split(":", 1)[1])
-                    else:
-                        candidate_files.add(line)
-        except OSError:
-            # Fallback: return None to signal "scan all"
+        hits = grep_files(symbol, ref, repo_path, _GREP_GLOBS)
+        if hits is None:  # git grep unavailable -> scan all
             return set()
-    return candidate_files
+        candidates.update(hits)
+    return candidates
 
 
 def find_references(
@@ -169,12 +129,12 @@ def find_references(
     symbol_names = set(changed_symbols)
 
     # Pre-filter with git grep
-    candidate_files = _git_grep_files(repo_path, symbol_names, ref)
+    candidate_files = _candidate_files(symbol_names, ref, repo_path)
     if candidate_files:
         files_to_scan = sorted(candidate_files - changed_files)
     else:
         # Fallback: scan all files
-        all_files = _list_files_at_ref(ref, repo_path)
+        all_files = list_files_at_ref(ref, repo_path)
         files_to_scan = [f for f in all_files if f not in changed_files]
 
     references: list[Reference] = []
@@ -184,7 +144,7 @@ def find_references(
         if language is None:
             continue
 
-        source = _get_file_content(ref, file_path, repo_path)
+        source = get_file_at_ref(ref, file_path, repo_path=repo_path)
         if source is None:
             continue
 

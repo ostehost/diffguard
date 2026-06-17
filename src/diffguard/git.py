@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+from collections.abc import Sequence
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -94,3 +95,48 @@ def get_file_from_index(
     if result.returncode != 0:
         return None
     return result.stdout
+
+
+def list_files_at_ref(ref: str, repo_path: str | Path = ".") -> list[str]:
+    """List all tracked file paths at *ref* (empty list on failure)."""
+    result = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", ref],
+        capture_output=True,
+        text=True,
+        cwd=str(repo_path),
+        check=False,
+    )
+    if result.returncode != 0:
+        return []
+    out = result.stdout.strip()
+    return out.split("\n") if out else []
+
+
+def grep_files(
+    pattern: str,
+    ref: str,
+    repo_path: str | Path = ".",
+    pathspecs: Sequence[str] = (),
+) -> list[str] | None:
+    """Return repo-relative paths at *ref* whose contents match *pattern*.
+
+    Returns an empty list when nothing matches, and *None* when git grep is
+    unavailable — so the caller can fall back to scanning all files.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "grep", "-l", pattern, ref, "--", *pathspecs],
+            capture_output=True,
+            text=True,
+            cwd=str(repo_path),
+            check=False,
+        )
+    except OSError:
+        return None
+    if result.returncode != 0 or not result.stdout.strip():
+        return []
+    paths: list[str] = []
+    for line in result.stdout.strip().split("\n"):
+        # "git grep <ref>" prefixes each match with "ref:".
+        paths.append(line.split(":", 1)[1] if ":" in line else line)
+    return paths
