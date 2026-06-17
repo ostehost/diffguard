@@ -233,26 +233,6 @@ def _review_hint_for_category(category: str) -> str:
     return hints.get(category, "Review this change")
 
 
-def _shorten_paths(paths: list[str]) -> list[str]:
-    """Strip common prefix from a list of paths."""
-    if not paths:
-        return paths
-    if len(paths) == 1:
-        # Just use filename
-        return [paths[0].rsplit("/", 1)[-1]]
-    # Find common prefix
-    parts = [p.split("/") for p in paths]
-    prefix_len = 0
-    for i in range(min(len(p) for p in parts)):
-        if len(set(p[i] for p in parts)) == 1:
-            prefix_len = i + 1
-        else:
-            break
-    if prefix_len > 0:
-        return ["/".join(p[prefix_len:]) for p in parts]
-    return paths
-
-
 def _format_context_output(
     output: DiffGuardOutput,
     ref_range: str,
