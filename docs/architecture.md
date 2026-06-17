@@ -20,17 +20,28 @@ Each module has a single responsibility. No horizontal imports between engine mo
 
 | Module | Input | Output | Responsibility |
 |--------|-------|--------|---------------|
-| `cli.py` | CLI args | exit code + JSON/text | Click CLI entry point. Commands: `review`, `summarize`, `context` (hidden alias for review), `install-hook`. Orchestrates pipeline and determines output. |
+| `cli.py` | CLI args | exit code + JSON/text | Click CLI entry point. Commands: `review`, `summarize`, `context` (hidden alias for review), `install-hook`. Orchestrates: fetch diff → run pipeline → scan deps → extract findings → render. Holds no domain or formatting logic. |
 | `git.py` | ref range | changed files + old/new content | All git subprocess calls. Nothing else touches git. |
 | `engine/_types.py` | — | — | Shared type aliases and dataclasses (`Symbol`, `ParseResult`, `compute_body_hash`). |
+| `engine/_paths.py` | path string | bool | Shared path classification (`is_test_file`). Used by summarizer and findings. |
 | `engine/parser.py` | source file | syntax tree | Tree-sitter parsing. No git logic, no matching. |
 | `engine/matcher.py` | old symbols + new symbols | matched pairs | Name-based symbol matching. O(n) dict lookup. |
 | `engine/classifier.py` | matched pairs | classified changes | Labels: added, removed, modified, moved, signature_changed. Sets `breaking` flag. |
 | `engine/signatures.py` | old + new signatures | breaking change flags + category labels | Signature comparison. Detects parameter changes, return type changes, default value changes. |
 | `engine/deps.py` | symbol names + git ref | external references | Dependency/caller detection. Uses `git grep` to pre-filter, then tree-sitter to confirm references in non-diff files. |
 | `engine/summarizer.py` | classified changes | tiered text | Generates oneliner, short, detailed summaries. |
+| `engine/findings.py` | `DiffGuardOutput` + dep refs | `list[Finding]` | **The high-signal domain layer.** Single source of truth for `is_high_signal()` / `categorize_change()`. `extract_findings()` annotates each finding with its production and test callers. |
 | `engine/pipeline.py` | ref range + content provider | `DiffGuardOutput` | Orchestrates parse → match → classify → summarize for all files. |
+| `report.py` | `list[Finding]` | text / JSON | **Presentation layer.** Pure rendering of findings — signature display, review hints, the text review block, and the structured JSON contract. No git, no trigger logic. |
+| `hooks.py` | repo path + hook type | installed hook path | Git hook shell-script templates and installation. Raises `HookError` on failure. |
 | `schema.py` | — | — | Pydantic models. The contract. |
+
+### Layering
+
+The trigger logic — "what counts as high-signal" — lives in exactly one place
+(`findings.py::is_high_signal`). The CLI orchestrates; the domain decides what is
+a finding; the report renders findings. Presentation depends on the domain, never
+the reverse, and neither touches git.
 
 ## Language plugin system
 
@@ -85,7 +96,7 @@ This is O(n) and handles the common case well. It deliberately does not attempt 
 
 DiffGuard's core design principle: **stay silent when there's nothing useful to say.**
 
-The `review` command checks for high-signal changes before producing output. If none are found, it exits with code 0 (silence). The logic lives in `cli.py::_has_high_signal_changes()`:
+The `review` command checks for high-signal changes before producing output. If none are found, it exits with code 0 (silence). The logic lives in `engine/findings.py::is_high_signal()`:
 
 A change is **high-signal** if any of these are true:
 

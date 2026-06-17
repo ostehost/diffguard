@@ -19,7 +19,7 @@ DiffGuard only speaks when high-signal changes are detected. The trigger criteri
 
 Body-only changes (same signature, different implementation) produce silence.
 
-Implementation: `cli.py::_has_high_signal_changes()` checks these criteria. If none match, exit code 0 (silence).
+Implementation: `engine/findings.py::is_high_signal()` checks these criteria. If none match, exit code 0 (silence).
 
 ## Consequences
 

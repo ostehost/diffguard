@@ -152,8 +152,7 @@ def render_text(findings: list[Finding]) -> str:
 
     n = len(findings)
     lines: list[str] = [
-        f"⚠ DiffGuard: {n} change{'s' if n != 1 else ''} "
-        f"need{'s' if n == 1 else ''} review",
+        f"⚠ DiffGuard: {n} change{'s' if n != 1 else ''} need{'s' if n == 1 else ''} review",
         "",
     ]
 

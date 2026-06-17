@@ -1,41 +1,57 @@
+# DiffGuard — Full Documentation Context
+
+---
+# Source: index.md
+
 # DiffGuard
 
 **Catches the structural breaks that pass code review.**
 
-## The catch
+## A real bug, in one line
 
-Flask changed `redirect()`'s default from 302 to 303 ([PR #5898](https://github.com/pallets/flask/pull/5898)). A reviewer sees a one-line diff. DiffGuard sees 7 callers that silently change behavior:
+This diff shipped in Flask ([PR #5898](https://github.com/pallets/flask/pull/5898)):
+
+```diff
+-def redirect(location, code=302, ...):
++def redirect(location, code=303, ...):
+```
+
+One line. Looks fine. A reviewer approves it.
+
+**The real impact:** 7 endpoints silently change HTTP behavior. POST-to-POST redirects become POST-to-GET. No errors. No warnings. Just broken APIs in production.
+
+**DiffGuard catches it:**
 
 ```
 $ diffguard review eca5fd1d~1..eca5fd1d
 
 ⚠ DiffGuard: 2 changes need review
 
-1. DEFAULT VALUE CHANGED: redirect(location, code=302, Response) → redirect(location, code=303, Response)
-   File: src/flask/helpers.py:241
-   Impact: 7 callers rely on the default:
-     auth.py:25   `return redirect(url_for("auth.login"))`
-     auth.py:77   `return redirect(url_for("auth.login"))`
-     auth.py:105  `return redirect(url_for("index"))`
-     auth.py:116  `return redirect(url_for("index"))`
-     blog.py:81   `return redirect(url_for("blog.index"))`
-   Review: Verify callers expect the new default value
+  DEFAULT VALUE CHANGED: redirect(location, code=302) → redirect(location, code=303)
+  src/flask/helpers.py:241
+  Impact: 7 callers rely on the default:
+    auth.py:25   return redirect(url_for("auth.login"))
+    auth.py:77   return redirect(url_for("auth.login"))
+    auth.py:105  return redirect(url_for("index"))
+    auth.py:116  return redirect(url_for("index"))
+    blog.py:81   return redirect(url_for("blog.index"))
+    + test_helpers.py (5 calls), test_regression.py (1), test_signals.py (1), test_testing.py (1)
 
-2. DEFAULT VALUE CHANGED: App.redirect(self, location, code=302) → App.redirect(self, location, code=303)
-   File: src/flask/sansio/app.py:935
-   Impact: 7 callers rely on the default
-   Review: Verify callers expect the new default value
+  DEFAULT VALUE CHANGED: App.redirect(self, location, code=302) → App.redirect(self, location, code=303)
+  src/flask/sansio/app.py:935 — 7 callers rely on the default
 ```
 
-Real output from DiffGuard run against Flask commit `eca5fd1d`. Signature display simplified for readability.
+Real output from DiffGuard against Flask commit `eca5fd1d`. Tree-sitter AST analysis — no LLM, no network calls, runs in seconds.
 
-## What DiffGuard is
+See more examples in [Real-World Catches](real-world-catches.md).
 
-DiffGuard is a **verification layer** for code changes. Not a review tool — reviews give opinions, DiffGuard gives facts. It uses tree-sitter AST analysis to detect structural changes in git diffs and traces their impact through your codebase.
+## What it catches
 
-**What it catches:** Function signature changes, removed/renamed symbols, default value changes — and shows you every caller affected.
+Function signature changes, removed/renamed symbols, default value changes — and shows you every caller affected.
 
-**What it doesn't catch:** Logic bugs, behavioral changes beyond signatures, performance issues, security vulnerabilities. DiffGuard detects a specific class of **structural breaks**, not all bugs.
+## What it doesn't catch
+
+Logic bugs, behavioral changes beyond signatures, performance issues, security vulnerabilities. DiffGuard detects a specific class of **structural breaks**, not all bugs.
 
 When there's nothing structural to report, it stays silent (exit code 0, no output).
 
@@ -48,25 +64,30 @@ diffguard review main..feature
 
 Exit codes: `0` = nothing noteworthy, `1` = findings, `2` = error.
 
+See the [Quickstart Guide](quickstart.md) for configuration, JSON output, and CI setup.
+
 ## How it works
 
 1. **Parses the diff** using tree-sitter AST analysis (not regex)
 2. **Extracts symbols** — functions, classes, signatures
 3. **Detects high-signal changes** — signature changes, removed symbols, default value changes
-4. **Scans for callers** — finds files that reference changed symbols
+4. **Scans for callers** — finds every file that references changed symbols
 5. **Outputs actionable context** — or stays silent if nothing matters
 
 See [How It Works](how-it-works.md) for the full technical approach.
 
 ## Why not X?
 
-| | DiffGuard | CodeRabbit | Aider repo-map |
-|---|---|---|---|
-| **Setup** | `pip install` (30 seconds) | Account + GitHub app + config | Locked inside Aider |
-| **Cost** | Free | $15–30/seat/month | Free (Aider-only) |
-| **Privacy** | Code never leaves your machine | Code on their servers | Local |
-| **Works with any agent** | Yes — CLI + JSON | GitHub PR comments only | Aider only |
-| **Output** | Silent when nothing matters | Comments on every PR | N/A |
+| | DiffGuard | CodeRabbit | Copilot / claude-code-action | Aider repo-map |
+|---|---|---|---|---|
+| **Setup** | `pip install` (30 seconds) | Account + GitHub app + config | GitHub app + config | Locked inside Aider |
+| **Cost** | Free | $15–30/seat/month | Included with Copilot | Free (Aider-only) |
+| **Privacy** | Code never leaves your machine | Code on their servers | Code on their servers | Local |
+| **Works with any agent** | Yes — CLI + JSON | GitHub PR comments only | GitHub only | Aider only |
+| **Output** | Silent when nothing matters | Comments on every PR | Comments on every PR | N/A |
+| **Analysis** | Structural verification (AST) | LLM-powered review | LLM-powered review | Tree-sitter map |
+
+These tools are **complementary**. Run DiffGuard first as cheap, instant structural triage. Then let the expensive model focus on what actually matters.
 
 ## Agent integration
 
@@ -114,6 +135,10 @@ When findings exist, DiffGuard posts a PR comment. When there's nothing notewort
 2. **Local-first.** Your code never leaves your machine. No SaaS, no API keys, no accounts.
 3. **Agent-native.** CLI + JSON output. `pip install` and go. Works with any agent or workflow.
 4. **Precision over recall.** We'd rather miss a minor issue than cry wolf on every PR.
+
+---
+# Source: quickstart.md
+
 # Quick Start
 
 ## Install
@@ -266,408 +291,10 @@ DiffGuard reports **structural facts**: which functions changed, what signatures
 It does **not** tell you *why* something changed, whether the logic is correct, or whether it's a good idea. That's the reviewer's job.
 
 **Scope:** Signatures, removed symbols, default value changes. Not logic, security, or performance.
-# Real-World Catches: DiffGuard vs. Historical OSS Bugs
-
-> These are real commits in real repos where DiffGuard flags exactly what went wrong — before users found out the hard way.
 
 ---
+# Source: schema.md
 
-## 1. 🏆 Flask: `redirect()` default changed from 302 → 303
-
-**Repo:** [pallets/flask](https://github.com/pallets/flask)
-**Commit:** `eca5fd1d` (merged via PR [#5898](https://github.com/pallets/flask/pull/5898))
-**Issue:** [#5895](https://github.com/pallets/flask/issues/5895)
-**Milestone:** Flask 3.2.0
-
-### What changed
-
-The `redirect()` function's `code` parameter default changed from `302` to `303`:
-
-```python
-# Before
-def redirect(location: str, code: int = 302, ...) -> BaseResponse:
-
-# After
-def redirect(location: str, code: int = 303, ...) -> BaseResponse:
-```
-
-### Why it matters
-
-HTTP 302 and 303 have subtly different semantics. 302 *sometimes* preserves the HTTP method (browser-dependent), while 303 *always* converts to GET. Any caller relying on 302's method-preservation behavior (e.g., API endpoints expecting POST→POST redirects) would silently break — no errors, just different behavior.
-
-### DiffGuard's output
-
-> Signature display simplified for readability — run the command yourself to see parameter type annotations.
-
-```
-⚠ DiffGuard: 2 changes need review
-
-1. DEFAULT VALUE CHANGED: redirect(location, code=302, Response) → redirect(location, code=303, Response)
-   File: src/flask/helpers.py:241
-   Impact: 7 callers rely on the default:
-     auth.py:25   `return redirect(url_for("auth.login"))`
-     auth.py:77   `return redirect(url_for("auth.login"))`
-     auth.py:105  `return redirect(url_for("index"))`
-     blog.py:81   `return redirect(url_for("blog.index"))`
-   Review: Verify callers expect the new default value
-
-2. DEFAULT VALUE CHANGED: App.redirect(self, location, code=302) → App.redirect(self, location, code=303)
-   File: src/flask/sansio/app.py:935
-   Impact: 7 callers rely on the default
-   Review: Verify callers expect the new default value
-```
-
-### Why this is a great story
-
-- Flask is one of the most popular Python web frameworks (~70k GitHub stars)
-- The change is intentional but **silently breaks callers** — no TypeError, no warning
-- DiffGuard identifies the exact callers that rely on the default and need verification
-- A human reviewer could easily miss the behavioral difference between 302 and 303
-
-**Headline: "DiffGuard would have caught Flask PR #5898 before it shipped."**
-
----
-
-## 2. httpx: `Request(method=)` narrows from `str | bytes` to `str`
-
-**Repo:** [encode/httpx](https://github.com/encode/httpx)
-**Commit:** `6622553` (PR [#3378](https://github.com/encode/httpx/pull/3378))
-
-### What changed
-
-The `Request.__init__()` `method` parameter type was narrowed from `str | bytes` to `str`:
-
-```python
-# Before
-class Request:
-    def __init__(self, method: str | bytes, url: URL | str, ...):
-
-# After
-class Request:
-    def __init__(self, method: str, url: URL | str, ...):
-```
-
-### Why it matters
-
-Any code passing `method=b"GET"` (bytes) would break with an `AttributeError` on `method.upper()` at runtime. The PR author acknowledged this was "nominally an API change" but believed it was a "bugfix in practice." Still — silent breakage for anyone using bytes.
-
-### DiffGuard's output
-
-```
-⚠ DiffGuard: 1 change needs review
-
-1. SIGNATURE CHANGED: __init__(self, method: str | bytes, ...) → __init__(self, method: str, ...)
-   File: httpx/_models.py:311
-   Impact: 63 callers rely on the default
-   Review: Check all callers handle the new signature
-```
-
-### Why this is a great story
-
-- httpx is the modern Python HTTP client (~13k stars), used by FastAPI's test client
-- Type narrowing is exactly the kind of "looks harmless" change that breaks real code
-- DiffGuard catches it instantly — no need to read the diff line-by-line
-
----
-
-## 3. Pydantic: `@serializer` renamed to `@field_serializer` (symbol removed)
-
-**Repo:** [pydantic/pydantic](https://github.com/pydantic/pydantic)
-**Commit:** `11edcb2c` (PR [#5331](https://github.com/pydantic/pydantic/pull/5331))
-
-### What changed
-
-The `@serializer` decorator was renamed to `@field_serializer`, and a new `@model_serializer` was added alongside it. The old name was removed entirely.
-
-### DiffGuard's output
-
-```
-⚠ DiffGuard: 5 changes need review
-
-1. PARAMETER ADDED (BREAKING): make_generic_field_serializer(serializer, mode)
-   → make_generic_field_serializer(serializer, mode, type)
-   Impact: Breaking change — callers will break with missing required argument
-
-2. SYMBOL REMOVED: serializer(__field, *fields, ...)
-   File: pydantic/decorators.py:341
-   Impact: 19 callers will break
-
-3-4. (additional overloads of the removed symbol)
-
-5. SYMBOL REMOVED: serializer(__field, *fields, mode='wrap', ...)
-   Impact: 19 callers will break
-```
-
-### Why this is a great story
-
-- Pydantic v2 was the biggest Python library migration in recent memory
-- DiffGuard catches both the symbol removal AND identifies 19 internal callers that reference it
-- This is the kind of rename that grep can find, but DiffGuard does it *automatically* as part of review
-
----
-
-## Dogfooding Notes
-
-While running DiffGuard on these repos, I noted:
-
-1. **Missed catch — Django `UniqueConstraint(name=None)` → `UniqueConstraint(name)` (commit `b172cbdf33`):** A parameter changed from optional (`name=None`) to required (`name`). DiffGuard returned exit 0 with no findings. This is a false negative — removing a default value is a breaking change. **Filed as a potential improvement.**
-
-2. **Output verbosity on httpx proxy commit:** 14 findings for the proxies→proxy migration. The output is very long. A summary mode or grouping related changes (e.g., "proxy parameter added to 9 HTTP method functions") would help for large refactors.
-
-3. **Caller detection quality:** DiffGuard correctly identifies callers in both source and test files, which is excellent. The Flask example showing `auth.py` and `blog.py` callers makes the impact immediately tangible.
-
-4. **Speed:** All reviews completed in under 5 seconds on these repos. Fast enough for CI integration.
-# How It Works
-
-## The approach: selective trigger
-
-Most diffs don't contain structural breaks. New functions, body-only changes, formatting — none of these affect callers. DiffGuard's core design: **stay silent unless the change is structurally significant.**
-
-This means DiffGuard only reports when it finds:
-
-| Trigger | What it means |
-|---------|---------------|
-| **Signature changed** | Function contract changed — callers may pass wrong arguments |
-| **Default value changed** | Callers relying on the default get different behavior silently |
-| **Symbol removed** | Dependents will break |
-| **Symbol moved** | Imports need updating |
-
-Body-only changes (same signature, different implementation) are internal refactors. They don't affect callers. DiffGuard ignores them.
-
-## The pipeline
-
-```
-git diff → parse → extract → match → classify → scan callers → output (or silence)
-```
-
-1. **Parse the diff** — tree-sitter builds ASTs for before/after versions of each changed file. Not regex — full syntax trees.
-2. **Extract symbols** — functions, classes, methods with full signatures, line numbers, and scope.
-3. **Match old ↔ new** — O(n) dict-based name matching. No fuzzy rename detection (accuracy over comprehensiveness).
-4. **Classify changes** — labels each symbol: added, removed, modified, moved, signature_changed. Sets `breaking` flag where applicable.
-5. **Scan for callers** — two-stage: `git grep` pre-filters for speed, then tree-sitter confirms references in non-diff files.
-6. **Apply selective trigger** — only produce output if high-signal changes exist AND have external callers.
-
-Typical timing: ~200ms for a 1000-line diff.
-
-## Why tree-sitter
-
-Tree-sitter provides C-speed parsing with pre-built binaries for 40+ languages. It gives DiffGuard real syntax trees instead of regex-based guesses. Adding a new language is mechanical: grammar + query patterns.
-
-Currently supported: Python (most mature), TypeScript/JavaScript, Go. More planned.
-
-## Precision over recall
-
-We tested three iterations before landing on the current design.
-
-Early versions tried to report on every structural change in a diff. A/B testing against 12 real commits from Flask, FastAPI, Pydantic, and httpx showed that most PRs don't benefit from structural analysis — the reviewer can read the diff fine on their own.
-
-The selective trigger changed the results:
-
-| Metric | Result |
-|--------|--------|
-| **Precision** | 100% — when it spoke, it was right |
-| **Silence rate** | 58% — stayed quiet on 7 of 12 PRs |
-| **False positives** | 0 |
-
-The key insight: making silence the default turned a marginally useful tool into a precision instrument. A tool that says "`redirect()` default changed from 302 to 303, 7 callers affected" is always right. A tool that comments on every PR trains you to ignore it.
-
-## What agents get
-
-Without DiffGuard, an AI reviewing a PR sees:
-```
--def redirect(location, code=302, Response=None):
-+def redirect(location, code=303, Response=None):
-```
-
-With DiffGuard:
-```
-DEFAULT VALUE CHANGED: redirect(location, code=302) → redirect(location, code=303)
-Impact: 5 callers rely on the default:
-  auth.py:25  `return redirect(url_for("auth.login"))`
-  auth.py:77  `return redirect(url_for("index"))`
-  blog.py:81  `return redirect(url_for("blog.index"))`
-Review: Verify callers expect HTTP 303 instead of 302
-```
-
-The difference: "I see a number changed" vs. "I see a behavioral change that affects 5 call sites across 3 files."
-
-## Limitations
-
-DiffGuard's value scales with PR size:
-
-| PR size | Value |
-|---------|-------|
-| Small (<100 lines, 1-2 files) | **Minimal.** The reviewer can read the whole diff. |
-| Medium (200-500 lines) | **Moderate.** Structural overview saves time. |
-| Large (500+ lines, multiple files) | **Significant.** Linear reading of 1000+ lines misses structural patterns. |
-
-DiffGuard is not magic. On small, focused PRs, you don't need it.
-
-For detailed internals, see [Architecture](architecture.md).
-# Agent Integration Guide
-
-DiffGuard works with any AI agent that can run shell commands.
-
-## Quick setup
-
-```bash
-pip install diffguard
-```
-
-Add one instruction to your agent's system prompt or config:
-
-```
-Before reviewing any diff, run: diffguard review <base>..HEAD
-```
-
-That's it. DiffGuard is silent (exit 0) when nothing is noteworthy, so it won't add noise.
-
-## Two commands for agents
-
-### `diffguard review` — selective, high-signal (primary)
-
-```bash
-diffguard review main..HEAD --format json
-```
-
-Returns only high-signal findings: signature changes, removed symbols, default value changes. Silent when nothing matters. Best for CI gates and "should I look closer?" decisions.
-
-### `diffguard summarize` — full structural map
-
-```bash
-diffguard summarize main..HEAD --format json
-```
-
-Returns a complete structural summary of the diff (~200-300 tokens). Always produces output. Best when the agent needs a full map before reading the diff.
-
-## Exit codes (review command)
-
-| Code | Meaning | Agent action |
-|------|---------|--------------|
-| 0 | No high-signal findings | Continue normally |
-| 1 | Findings present | Read stdout, address each finding |
-| 2 | Error (not a repo, bad ref) | Report the error |
-
-## Example output
-
-### Review (text)
-
-```
-⚠ DiffGuard: 2 changes need review
-
-1. DEFAULT VALUE CHANGED: redirect(location, code=302, Response) → redirect(location, code=303, Response)
-   File: src/flask/helpers.py:241
-   Impact: 7 callers rely on the default:
-     auth.py:25   `return redirect(url_for("auth.login"))`
-     ...
-   Review: Verify callers expect the new default value
-```
-
-*Real output from Flask commit `eca5fd1d`.*
-
-### Review (JSON)
-
-```json
-{
-  "version": "0.1.0",
-  "ref_range": "main..HEAD",
-  "findings": [
-    {
-      "category": "SIGNATURE_CHANGED",
-      "symbol": "authenticate",
-      "file": "src/auth/users.py",
-      "line": 34,
-      "before_signature": "def authenticate(name, email)",
-      "after_signature": "def authenticate(name, email, role=\"viewer\")",
-      "impact": {
-        "production_callers": 3,
-        "test_callers": 2,
-        "callers": [...]
-      },
-      "review_hint": "Check all callers handle the new signature"
-    }
-  ],
-  "stats": {
-    "files_analyzed": 5,
-    "symbols_changed": 8,
-    "silence_reason": null
-  }
-}
-```
-
-!!! note "Illustrative example"
-    The JSON above shows the schema structure with realistic field values. See [Schema Reference](schema.md#review-output) for the full specification.
-
-## Claude Code
-
-Add the snippet to your repo's `CLAUDE.md` — see [claude-md-snippet.md](claude-md-snippet.md).
-
-### Claude Code Hook
-
-Wire DiffGuard as a hook that runs automatically after edits:
-
-`.claude/settings.json`:
-
-```json
-{
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write|MultiEdit",
-        "command": "diffguard review HEAD~1..HEAD --format text 2>/dev/null || true"
-      }
-    ]
-  }
-}
-```
-
-Or as a one-shot check when a task completes:
-
-```json
-{
-  "hooks": {
-    "TaskCompleted": [
-      {
-        "command": "diffguard review $(git merge-base main HEAD)..HEAD"
-      }
-    ]
-  }
-}
-```
-
-## Cursor
-
-Add a rule file at `.cursor/rules/diffguard.mdc` — see [cursor-rule-snippet.md](cursor-rule-snippet.md).
-
-## Integration patterns
-
-### CI/CD pre-review
-
-```bash
-# In your CI pipeline, before AI review
-FINDINGS=$(diffguard review $BASE_SHA..HEAD --format json)
-if [ $? -eq 1 ]; then
-  echo "$FINDINGS" | your-agent-review-command
-fi
-```
-
-### Git hook
-
-```bash
-# .git/hooks/post-commit
-diffguard review HEAD~1..HEAD
-```
-
-## Scope
-
-DiffGuard catches **structural breaks**: signature changes, removed symbols, default value changes. It does **not** catch logic bugs, security issues, or performance problems. See [What it catches](index.md#what-it-catches).
-
-## Supported languages
-
-- **Python** — most mature, extensive real-world validation
-- TypeScript / JavaScript
-- Go
-- More planned (Rust, Java, C#)
 # Schema Reference
 
 DiffGuard has two commands with different JSON output schemas.
@@ -837,6 +464,178 @@ The summarize command outputs a complete structural map of the diff. Defined by 
 - **Breaking changes at top level.** Not buried in file details.
 - **No opinions.** Structural facts only.
 - **Graceful degradation.** Parse errors and unsupported languages are flagged, never crashes.
+
+---
+# Source: agent-integration.md
+
+# Agent Integration Guide
+
+DiffGuard works with any AI agent that can run shell commands.
+
+## Quick setup
+
+```bash
+pip install diffguard
+```
+
+Add one instruction to your agent's system prompt or config:
+
+```
+Before reviewing any diff, run: diffguard review <base>..HEAD
+```
+
+That's it. DiffGuard is silent (exit 0) when nothing is noteworthy, so it won't add noise.
+
+## Two commands for agents
+
+### `diffguard review` — selective, high-signal (primary)
+
+```bash
+diffguard review main..HEAD --format json
+```
+
+Returns only high-signal findings: signature changes, removed symbols, default value changes. Silent when nothing matters. Best for CI gates and "should I look closer?" decisions.
+
+### `diffguard summarize` — full structural map
+
+```bash
+diffguard summarize main..HEAD --format json
+```
+
+Returns a complete structural summary of the diff (~200-300 tokens). Always produces output. Best when the agent needs a full map before reading the diff.
+
+## Exit codes (review command)
+
+| Code | Meaning | Agent action |
+|------|---------|--------------|
+| 0 | No high-signal findings | Continue normally |
+| 1 | Findings present | Read stdout, address each finding |
+| 2 | Error (not a repo, bad ref) | Report the error |
+
+## Example output
+
+### Review (text)
+
+```
+⚠ DiffGuard: 2 changes need review
+
+1. DEFAULT VALUE CHANGED: redirect(location, code=302, Response) → redirect(location, code=303, Response)
+   File: src/flask/helpers.py:241
+   Impact: 7 callers rely on the default:
+     auth.py:25   `return redirect(url_for("auth.login"))`
+     ...
+   Review: Verify callers expect the new default value
+```
+
+*Real output from Flask commit `eca5fd1d`.*
+
+### Review (JSON)
+
+```json
+{
+  "version": "0.1.0",
+  "ref_range": "main..HEAD",
+  "findings": [
+    {
+      "category": "SIGNATURE_CHANGED",
+      "symbol": "authenticate",
+      "file": "src/auth/users.py",
+      "line": 34,
+      "before_signature": "def authenticate(name, email)",
+      "after_signature": "def authenticate(name, email, role=\"viewer\")",
+      "impact": {
+        "production_callers": 3,
+        "test_callers": 2,
+        "callers": [...]
+      },
+      "review_hint": "Check all callers handle the new signature"
+    }
+  ],
+  "stats": {
+    "files_analyzed": 5,
+    "symbols_changed": 8,
+    "silence_reason": null
+  }
+}
+```
+
+!!! note "Illustrative example"
+    The JSON above shows the schema structure with realistic field values. See [Schema Reference](schema.md#review-output) for the full specification.
+
+## Claude Code
+
+Add the snippet to your repo's `CLAUDE.md` — see [claude-md-snippet.md](claude-md-snippet.md).
+
+### Claude Code Hook
+
+Wire DiffGuard as a hook that runs automatically after edits:
+
+`.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "command": "diffguard review HEAD~1..HEAD --format text 2>/dev/null || true"
+      }
+    ]
+  }
+}
+```
+
+Or as a one-shot check when a task completes:
+
+```json
+{
+  "hooks": {
+    "TaskCompleted": [
+      {
+        "command": "diffguard review $(git merge-base main HEAD)..HEAD"
+      }
+    ]
+  }
+}
+```
+
+## Cursor
+
+Add a rule file at `.cursor/rules/diffguard.mdc` — see [cursor-rule-snippet.md](cursor-rule-snippet.md).
+
+## Integration patterns
+
+### CI/CD pre-review
+
+```bash
+# In your CI pipeline, before AI review
+FINDINGS=$(diffguard review $BASE_SHA..HEAD --format json)
+if [ $? -eq 1 ]; then
+  echo "$FINDINGS" | your-agent-review-command
+fi
+```
+
+### Git hook
+
+```bash
+# .git/hooks/post-commit
+diffguard review HEAD~1..HEAD
+```
+
+## Scope
+
+DiffGuard catches **structural breaks**: signature changes, removed symbols, default value changes. It does **not** catch logic bugs, security issues, or performance problems. See [What it catches](index.md#what-it-catches).
+
+## Supported languages
+
+- **Python** — most mature, extensive real-world validation
+- TypeScript / JavaScript
+- Go
+- More planned (Rust, Java, C#)
+
+---
+# Source: architecture.md
+
 # Architecture
 
 ## Pipeline
@@ -859,17 +658,28 @@ Each module has a single responsibility. No horizontal imports between engine mo
 
 | Module | Input | Output | Responsibility |
 |--------|-------|--------|---------------|
-| `cli.py` | CLI args | exit code + JSON/text | Click CLI entry point. Commands: `review`, `summarize`, `context` (hidden alias for review), `install-hook`. Orchestrates pipeline and determines output. |
+| `cli.py` | CLI args | exit code + JSON/text | Click CLI entry point. Commands: `review`, `summarize`, `context` (hidden alias for review), `install-hook`. Orchestrates: fetch diff → run pipeline → scan deps → extract findings → render. Holds no domain or formatting logic. |
 | `git.py` | ref range | changed files + old/new content | All git subprocess calls. Nothing else touches git. |
 | `engine/_types.py` | — | — | Shared type aliases and dataclasses (`Symbol`, `ParseResult`, `compute_body_hash`). |
+| `engine/_paths.py` | path string | bool | Shared path classification (`is_test_file`). Used by summarizer and findings. |
 | `engine/parser.py` | source file | syntax tree | Tree-sitter parsing. No git logic, no matching. |
 | `engine/matcher.py` | old symbols + new symbols | matched pairs | Name-based symbol matching. O(n) dict lookup. |
 | `engine/classifier.py` | matched pairs | classified changes | Labels: added, removed, modified, moved, signature_changed. Sets `breaking` flag. |
 | `engine/signatures.py` | old + new signatures | breaking change flags + category labels | Signature comparison. Detects parameter changes, return type changes, default value changes. |
 | `engine/deps.py` | symbol names + git ref | external references | Dependency/caller detection. Uses `git grep` to pre-filter, then tree-sitter to confirm references in non-diff files. |
 | `engine/summarizer.py` | classified changes | tiered text | Generates oneliner, short, detailed summaries. |
+| `engine/findings.py` | `DiffGuardOutput` + dep refs | `list[Finding]` | **The high-signal domain layer.** Single source of truth for `is_high_signal()` / `categorize_change()`. `extract_findings()` annotates each finding with its production and test callers. |
 | `engine/pipeline.py` | ref range + content provider | `DiffGuardOutput` | Orchestrates parse → match → classify → summarize for all files. |
+| `report.py` | `list[Finding]` | text / JSON | **Presentation layer.** Pure rendering of findings — signature display, review hints, the text review block, and the structured JSON contract. No git, no trigger logic. |
+| `hooks.py` | repo path + hook type | installed hook path | Git hook shell-script templates and installation. Raises `HookError` on failure. |
 | `schema.py` | — | — | Pydantic models. The contract. |
+
+### Layering
+
+The trigger logic — "what counts as high-signal" — lives in exactly one place
+(`findings.py::is_high_signal`). The CLI orchestrates; the domain decides what is
+a finding; the report renders findings. Presentation depends on the domain, never
+the reverse, and neither touches git.
 
 ## Language plugin system
 
@@ -924,7 +734,7 @@ This is O(n) and handles the common case well. It deliberately does not attempt 
 
 DiffGuard's core design principle: **stay silent when there's nothing useful to say.**
 
-The `review` command checks for high-signal changes before producing output. If none are found, it exits with code 0 (silence). The logic lives in `cli.py::_has_high_signal_changes()`:
+The `review` command checks for high-signal changes before producing output. If none are found, it exits with code 0 (silence). The logic lives in `engine/findings.py::is_high_signal()`:
 
 A change is **high-signal** if any of these are true:
 
@@ -1019,101 +829,92 @@ DiffGuard never crashes on unsupported input. It always produces valid JSON.
 | Rust/TypeScript core | Premature optimization. Python + native tree-sitter is fast enough. |
 | difftastic | Line-oriented JSON output, not semantic. Great visual tool, wrong abstraction. |
 | ast-grep | Pattern search, not a differ. Possible future add-on. |
-# Roadmap
 
-*Last updated: 2026-02-11*
+---
+# Source: validation.md
 
-## Vision
+# Validation
 
-DiffGuard is a **verification layer** for code changes. Not a reviewer (opinions) — a verifier (facts).
+DiffGuard has two commands, validated in different ways.
 
-- **Human hook:** "Catches the bugs that pass code review"
-- **Technical hook:** "Precision verification for AI-native workflows"
+---
 
-Works for both humans (VS Code/Cursor devs) and AI agents (Claude Code, OpenClaw, pipelines). Local-first, privacy-first, agent-native CLI. Your code never leaves your machine.
+## `diffguard review` — real-world catch validation
 
-## Competitive context
+The `review` command's detection capabilities are validated against real commits in real open-source projects. See [Real-World Catches](real-world-catches.md) for full details.
 
-| Tool | Model | Limitation |
-|------|-------|------------|
-| CodeRabbit | SaaS, $15-30/seat | Code leaves your machine. Reviews on their servers. |
-| Aider repo-map | tree-sitter + PageRank | Locked inside Aider. Not usable standalone. |
-| ast-grep | Pattern search CLI | Searches, doesn't diff. No semantic change detection. |
-| semgrep | Static analysis rules | Security-focused. Not a change reviewer. |
-| GitHub Copilot review | SaaS, GitHub-only | Vendor lock-in. No local option. |
-| claude-code-action | GitHub Action, runs on your runner | Broad review, not precision bug detection. **Complementary to DiffGuard** — DiffGuard triages, claude-code-action reviews what matters. |
+**Summary of results:**
 
-DiffGuard is the only open-source, local-first, agent-native option.
+- **Flask:** Caught `redirect()` default change from 302→303, identified 7 affected callers
+- **httpx:** Caught `Request(method=)` type narrowing from `str | bytes` to `str`
+- **Pydantic:** Caught `@serializer` removal and 19 affected callers
 
-## License
+**Known false negative:** Django `UniqueConstraint(name=None)` → `UniqueConstraint(name)` — a parameter changed from optional to required. DiffGuard returned exit 0. Filed as a potential improvement.
 
-BSL 1.1 — see [LICENSE](https://github.com/oste-git/diffguard/blob/main/LICENSE) for details.
+**Precision:** Zero false positives in validation testing. DiffGuard prioritizes precision over recall — it would rather miss a minor issue than report a false positive.
 
-## Phases
+---
 
-### Phase 1: Ship it (Now → 4 weeks)
+## `diffguard summarize` — A/B test validation
 
-**Status: current**
+We ran a controlled test to measure whether `summarize` output helps AI reviewers find more issues.
 
-**Goals:**
-- Ship CLI to PyPI (`pip install diffguard`)
-- Integration snippets for CLAUDE.md, Cursor rules, Aider
-- Launch post
+!!! note "Feature context"
+    This A/B test validates the `summarize` command's structural output as a review pre-pass. It does not test the `review` command's selective detection.
 
-**Gate criteria:**
-- 50 installs in first 30 days
-- 5 distinct users in 30 days
+### Setup
 
-**Kill signals:**
-- <20 installs after 30 days with active promotion
+- **Commit:** 7ae6492 — 944 lines changed across 3 files
+- **Baseline:** AI reviewer with raw diff only (974 lines of diff text)
+- **Assisted:** AI reviewer with DiffGuard `summarize` JSON output + the same raw diff
 
-### Phase 2: CI integration (Weeks 5–10)
+### Results
 
-**Status: planned**
+| Metric | Baseline | Assisted |
+|--------|----------|----------|
+| Total findings | 19 | **26 (+37%)** |
+| Design-level issues | 4 | **6** |
+| Specific missing test coverage | 1 (generic) | **6 (named functions)** |
+| Bugs found | 5 | 5 |
 
-**Goals:**
-- GitHub Action (`diffguard-action`)
-- `--ci` mode (non-interactive, structured output)
-- Team config file (`.diffguard.yml`)
-- `--fail-on` severity flag for CI gates
-- claude-code-action + DiffGuard integration example (show them running together)
-- "Bugs AI reviewers miss" benchmark — test DiffGuard against AI-generated code, publish results
-- Ensure `--format json` output has severity, confidence, location fields for agent consumption
+### What the assisted reviewer caught that the baseline missed
 
-**Gate criteria:**
-- \>100 weekly active users (WAU)
+1. **`_is_high_impact` dual-set case matching bug** — a real logic error where `"If_Statement"` silently fails
+2. **`_get_ref_content` can't distinguish "file missing" from "git error"** — error handling gap
+3. **`reshape_engine_output` mutates input dict** — callers don't expect this
+4. **Specific untested functions** — named 6 functions with no test coverage
 
-**Kill signals:**
-- <50 WAU despite GitHub Action availability
+### What the baseline caught that the assisted missed
 
-### Phase 3: Watch mode (Weeks 11–16)
+1. Type annotation `str` with default `None` (should be `str | None`)
+2. `ref~1` doesn't exist for initial commit
+3. `_risk_level_value` returns -1 for unknown
 
-**Status: planned**
+The baseline's unique findings were surface-level. The assisted reviewer's unique findings were structural.
 
-**Goals:**
-- `diffguard watch` — daemon mode, incremental review on file save
-- Context hints — suggest related files/symbols for the agent
-- Rust and Java language support
+---
 
-**Gate criteria:**
-- Sustained growth in WAU
-- Community requests for daemon mode
+## Why it works
 
-**Kill signals:**
-- No organic demand for watch mode after Phase 2 traction
+The `summarize` output gives the reviewer a **map** of all changed symbols before it reads the diff. Instead of scanning 974 lines linearly, it knows the shape of the change and allocates attention to the important parts.
 
-## Future-Proof Thesis
+The `review` command goes further — it filters to only the high-signal changes and traces caller impact, so the reviewer can focus on what actually matters.
 
-> As AI generates more code, the need for automated verification increases, not decreases. Human review capacity is fixed. AI-generated code volume is exponential. The bottleneck shifts from "who writes the code" to "who verifies the code is correct." DiffGuard is a verification engine that works regardless of whether code was written by a human, Cursor, Claude Code, or a fully autonomous agent swarm. The less human oversight there is in the loop, the more critical precision-targeted bug detection becomes.
+## Honest assessment
 
-DiffGuard is infrastructure (model-agnostic pre-processor), not a model wrapper. CLI-first design is already positioned for the agentic future.
+DiffGuard's value scales with PR size:
 
-## Kill / continue signals
+| PR size | Value added |
+|---------|------------|
+| Small (<100 lines, 1-2 files) | **Minimal.** The reviewer can read the whole diff easily. |
+| Medium (200-500 lines) | **Moderate.** Structural overview saves the reviewer from getting lost. |
+| Large (500+ lines, multiple files) | **Significant.** Linear reading of 1000+ lines of diff misses structural patterns. |
 
-| Milestone | Signal | Action |
-|-----------|--------|--------|
-| Month 1 | >50 installs | Continue to Phase 2 |
-| Month 3 | >100 WAU, >200 GitHub stars | Continue to Phase 3 |
-| Month 6 | External contributors appearing | Project has legs — invest more |
-| Month 1 | <20 installs | Reassess positioning or pivot |
-| Month 3 | <50 WAU | Consider stopping active development |
+DiffGuard is not magic. On small, focused PRs, you don't need it. On large, multi-file changes — the kind where reviewers most often miss design issues — it earns its keep.
+
+## Philosophy: facts, not opinions
+
+DiffGuard reports structural facts: what functions changed, what signatures broke, what moved. It does **not** assess risk, rate severity, or guess intent.
+
+A tool that says "this change is high risk" and is wrong erodes trust fast. A tool that says "`redirect()` default changed from 302 to 303, 7 callers affected" is always right — and the reviewer draws their own conclusions.
+
