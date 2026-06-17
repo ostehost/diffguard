@@ -73,15 +73,11 @@ def _partition_files(
 # ---------------------------------------------------------------------------
 
 
-def build_summary(
-    files: list[FileChange],
-    *,
-    include_tests: bool = True,
-) -> Summary:
+def build_summary(files: list[FileChange]) -> Summary:
     """Build the structured Summary from classified file changes.
 
-    When *include_tests* is False the summary counts/focus still reflect all
-    files (they feed the JSON output), so this function always uses all files.
+    The summary counts and focus always reflect all files, including tests —
+    they feed the JSON output, which is never filtered by test status.
     """
     counter: Counter[str] = Counter()
     breaking: list[SymbolChange] = []

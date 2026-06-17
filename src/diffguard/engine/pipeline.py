@@ -173,9 +173,7 @@ def _apply_moves(
     file_changes: list[FileChange],
 ) -> None:
     """Inject cross-file move changes into file_changes and remove stale add/remove."""
-    from diffguard.engine.classifier import classify_changes as _classify
-
-    move_changes = _classify(moves)
+    move_changes = classify_changes(moves)
     # Build a mapping from move change name to source/destination paths
     move_paths = {
         m.old.name: (m.file_from, m.file_to) for m in moves if m.old and m.file_from and m.file_to
