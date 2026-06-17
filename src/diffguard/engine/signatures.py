@@ -116,6 +116,79 @@ def is_default_value_change(old_signature: str, new_signature: str) -> bool:
     return False
 
 
+# ---------------------------------------------------------------------------
+# Shared parameter-diff predicates
+#
+# classify_signature_change (label) and is_breaking_change (bool) ask the same
+# questions about how the parameter lists differ. These helpers hold each
+# question once so the two public functions stay declarative and cannot drift.
+# ---------------------------------------------------------------------------
+
+
+def _kw_name(param: str) -> str:
+    """Bare name of a keyword-only parameter (strip type annotation and default)."""
+    return _strip_default(param).split(":")[0].strip()
+
+
+def _positional_removed(old_pos: list[str], new_pos: list[str]) -> bool:
+    """A positional parameter was dropped."""
+    return len(new_pos) < len(old_pos)
+
+
+def _positional_added_without_default(old_pos: list[str], new_pos: list[str]) -> bool:
+    """A new positional parameter was added without a default value."""
+    if len(new_pos) <= len(old_pos):
+        return False
+    added = new_pos[len(old_pos) :]
+    return any(not _param_has_default(p) for p in added)
+
+
+def _kwonly_removed(old_kw: list[str], new_kw: list[str]) -> bool:
+    """An existing keyword-only parameter was removed."""
+    return bool({_kw_name(k) for k in old_kw} - {_kw_name(k) for k in new_kw})
+
+
+def _kwonly_added_without_default(old_kw: list[str], new_kw: list[str]) -> bool:
+    """A new keyword-only parameter was added without a default value."""
+    old_names = {_kw_name(k) for k in old_kw}
+    return any(_kw_name(k) not in old_names and not _param_has_default(k) for k in new_kw)
+
+
+def _existing_positional_changed(old_pos: list[str], new_pos: list[str]) -> bool:
+    """An existing positional parameter changed name/type or default value."""
+    for old_p, new_p in zip(old_pos, new_pos, strict=False):
+        if _strip_default(old_p) != _strip_default(new_p):
+            return True
+        old_def = _param_default_value(old_p)
+        new_def = _param_default_value(new_p)
+        if old_def != new_def and old_def is not None and new_def is not None:
+            return True
+    return False
+
+
+def _existing_kwonly_changed(old_kw: list[str], new_kw: list[str]) -> bool:
+    """An existing keyword-only parameter changed name/type or default value."""
+    old_kw_map = {_kw_name(k): k for k in old_kw}
+    for new_k in new_kw:
+        old_k = old_kw_map.get(_kw_name(new_k))
+        if old_k is None:
+            continue
+        if _strip_default(old_k) != _strip_default(new_k):
+            return True
+        old_def = _param_default_value(old_k)
+        new_def = _param_default_value(new_k)
+        if old_def != new_def and old_def is not None and new_def is not None:
+            return True
+    return False
+
+
+def _return_type_changed(old_signature: str, new_signature: str) -> bool:
+    """Return type annotation changed, with both sides annotated."""
+    old_ret = _extract_return_type(old_signature)
+    new_ret = _extract_return_type(new_signature)
+    return old_ret != new_ret and old_ret is not None and new_ret is not None
+
+
 def classify_signature_change(old_signature: str, new_signature: str) -> str:
     """Return a specific category label for a signature change.
 
@@ -130,48 +203,21 @@ def classify_signature_change(old_signature: str, new_signature: str) -> str:
     if old_signature == new_signature:
         return "SIGNATURE CHANGED"
 
-    old_params = extract_params(old_signature)
-    new_params = extract_params(new_signature)
-    old_pos, old_kw = _split_positional_and_kwonly(old_params)
-    new_pos, new_kw = _split_positional_and_kwonly(new_params)
+    old_pos, old_kw = _split_positional_and_kwonly(extract_params(old_signature))
+    new_pos, new_kw = _split_positional_and_kwonly(extract_params(new_signature))
 
-    # Positional parameter removed
-    if len(new_pos) < len(old_pos):
+    if _positional_removed(old_pos, new_pos) or _kwonly_removed(old_kw, new_kw):
         return "PARAMETER REMOVED"
-
-    # Keyword-only parameter removed
-    old_kw_names = {_strip_default(k).split(":")[0].strip() for k in old_kw}
-    new_kw_names = {_strip_default(k).split(":")[0].strip() for k in new_kw}
-    if old_kw_names - new_kw_names:
-        return "PARAMETER REMOVED"
-
-    # New positional params without defaults
-    if len(new_pos) > len(old_pos):
-        added = new_pos[len(old_pos) :]
-        if any(not _param_has_default(p) for p in added):
-            return "PARAMETER ADDED (BREAKING)"
-
-    # New keyword-only params without defaults
-    old_kw_map = {_strip_default(k).split(":")[0].strip(): k for k in old_kw}
-    for new_k in new_kw:
-        name = _strip_default(new_k).split(":")[0].strip()
-        if name not in old_kw_map and not _param_has_default(new_k):
-            return "PARAMETER ADDED (BREAKING)"
-
-    # Default value change check
+    if _positional_added_without_default(old_pos, new_pos) or _kwonly_added_without_default(
+        old_kw, new_kw
+    ):
+        return "PARAMETER ADDED (BREAKING)"
     if is_default_value_change(old_signature, new_signature):
         return "DEFAULT VALUE CHANGED"
-
-    # Return type change
-    old_ret = _extract_return_type(old_signature)
-    new_ret = _extract_return_type(new_signature)
-    if old_ret != new_ret and old_ret is not None and new_ret is not None:
+    if _return_type_changed(old_signature, new_signature):
         return "RETURN TYPE CHANGED"
-
-    # Check for other breaking changes (type changes on existing params, etc.)
     if is_breaking_change(old_signature, new_signature):
         return "BREAKING SIGNATURE CHANGE"
-
     return "SIGNATURE CHANGED"
 
 
@@ -186,63 +232,15 @@ def is_breaking_change(old_signature: str, new_signature: str) -> bool:
     if old_signature == new_signature:
         return False
 
-    old_params = extract_params(old_signature)
-    new_params = extract_params(new_signature)
+    old_pos, old_kw = _split_positional_and_kwonly(extract_params(old_signature))
+    new_pos, new_kw = _split_positional_and_kwonly(extract_params(new_signature))
 
-    # Split into positional and keyword-only
-    old_pos, old_kw = _split_positional_and_kwonly(old_params)
-    new_pos, new_kw = _split_positional_and_kwonly(new_params)
-
-    # Positional parameter removed → breaking
-    if len(new_pos) < len(old_pos):
-        return True
-
-    # Check existing positional params changed (name/type or default value)
-    for old_p, new_p in zip(old_pos, new_pos, strict=False):
-        # Name/type changed
-        if _strip_default(old_p) != _strip_default(new_p):
-            return True
-        # Default value changed on existing param
-        old_def = _param_default_value(old_p)
-        new_def = _param_default_value(new_p)
-        if old_def != new_def and old_def is not None and new_def is not None:
-            return True
-
-    # New positional params added — breaking only if they lack defaults
-    if len(new_pos) > len(old_pos):
-        added = new_pos[len(old_pos) :]
-        if any(not _param_has_default(p) for p in added):
-            return True
-
-    # Check existing keyword-only params changed
-    old_kw_map = {_strip_default(k).split(":")[0].strip(): k for k in old_kw}
-    for new_k in new_kw:
-        name = _strip_default(new_k).split(":")[0].strip()
-        if name in old_kw_map:
-            old_k = old_kw_map[name]
-            if _strip_default(old_k) != _strip_default(new_k):
-                return True
-            old_def = _param_default_value(old_k)
-            new_def = _param_default_value(new_k)
-            if old_def != new_def and old_def is not None and new_def is not None:
-                return True
-
-    # Existing keyword-only param removed → breaking
-    new_kw_names = {_strip_default(k).split(":")[0].strip() for k in new_kw}
-    for name in old_kw_map:
-        if name not in new_kw_names:
-            return True
-
-    # New keyword-only params without defaults → breaking
-    for new_k in new_kw:
-        name = _strip_default(new_k).split(":")[0].strip()
-        if name not in old_kw_map and not _param_has_default(new_k):
-            return True
-
-    # Return type change
-    old_ret = _extract_return_type(old_signature)
-    new_ret = _extract_return_type(new_signature)
-    if old_ret != new_ret and old_ret is not None and new_ret is not None:
-        return True
-
-    return False
+    return (
+        _positional_removed(old_pos, new_pos)
+        or _existing_positional_changed(old_pos, new_pos)
+        or _positional_added_without_default(old_pos, new_pos)
+        or _existing_kwonly_changed(old_kw, new_kw)
+        or _kwonly_removed(old_kw, new_kw)
+        or _kwonly_added_without_default(old_kw, new_kw)
+        or _return_type_changed(old_signature, new_signature)
+    )
