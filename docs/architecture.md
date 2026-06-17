@@ -21,15 +21,16 @@ Each module has a single responsibility. No horizontal imports between engine mo
 | Module | Input | Output | Responsibility |
 |--------|-------|--------|---------------|
 | `cli.py` | CLI args | exit code + JSON/text | Click CLI entry point. Commands: `review`, `summarize`, `context` (hidden alias for review), `install-hook`. Orchestrates: fetch diff → run pipeline → scan deps → extract findings → render. Holds no domain or formatting logic. |
-| `git.py` | ref range | raw diff / file text | All git subprocess calls. Nothing else touches git. Returns raw text; does no parsing. |
+| `git.py` | ref range | raw diff / file text | **The sole owner of git subprocess.** All `git` calls live here (`get_diff`, `get_file_at_ref`, `list_files_at_ref`, `grep_files`, …); nothing else runs git. Returns raw text; does no parsing. |
 | `diff.py` | unified diff text | `list[FileDiff]` | Unified-diff parser (`parse_diff`, `is_generated`, hunk/line model). Pure text parsing, no git access. |
 | `engine/_types.py` | — | — | Shared type aliases and dataclasses (`Symbol`, `ParseResult`, `compute_body_hash`). |
 | `engine/_paths.py` | path string | bool | Shared path classification (`is_test_file`). Used by summarizer and findings. |
+| `engine/_refs.py` | ref range string | `(old_ref, new_ref)` | `split_ref_range` — the one place that parses an `A..B` range. Shared by cli and pipeline. |
 | `engine/parser.py` | source file | syntax tree | Tree-sitter parsing. No git logic, no matching. |
 | `engine/matcher.py` | old symbols + new symbols | matched pairs | Name-based symbol matching. O(n) dict lookup. |
-| `engine/classifier.py` | matched pairs | classified changes | Labels: added, removed, modified, moved, signature_changed. Sets `breaking` flag. |
-| `engine/signatures.py` | old + new signatures | breaking change flags + category labels | Signature comparison. Detects parameter changes, return type changes, default value changes. |
-| `engine/deps.py` | symbol names + git ref | external references | Dependency/caller detection. Uses `git grep` to pre-filter, then tree-sitter to confirm references in non-diff files. |
+| `engine/classifier.py` | matched pairs | classified changes | Labels: added, removed, modified, moved, signature_changed. Sets `breaking` flag. Builds `kind` via a typed map (`SymbolKind`). |
+| `engine/signatures.py` | old + new signatures | breaking change flags + category labels | Signature comparison via shared param-diff predicates. Detects parameter changes, return type changes, default value changes. |
+| `engine/deps.py` | symbol names + git ref | external references | Dependency/caller detection. Pre-filters with `git grep` then uses tree-sitter to confirm references in non-diff files. Delegates **all** git access to `git.py` (no subprocess of its own). |
 | `engine/summarizer.py` | classified changes | tiered text | Generates oneliner, short, detailed summaries. |
 | `engine/findings.py` | `DiffGuardOutput` + dep refs | `list[Finding]` | **The high-signal domain layer.** Single source of truth for `is_high_signal()` / `categorize_change()`. `extract_findings()` annotates each finding with its production and test callers. |
 | `engine/pipeline.py` | ref range + content provider | `DiffGuardOutput` | Orchestrates parse → match → classify → summarize for all files. |
@@ -42,7 +43,11 @@ Each module has a single responsibility. No horizontal imports between engine mo
 The trigger logic — "what counts as high-signal" — lives in exactly one place
 (`findings.py::is_high_signal`). The CLI orchestrates; the domain decides what is
 a finding; the report renders findings. Presentation depends on the domain, never
-the reverse, and neither touches git.
+the reverse, and neither runs git.
+
+Git access is funnelled through `git.py` alone: it is the only module that spawns
+a `git` subprocess. Engine modules stay pure of subprocess — `deps.py`, the one
+git-backed scanner, calls `git.py` helpers rather than shelling out itself.
 
 ## Language plugin system
 
