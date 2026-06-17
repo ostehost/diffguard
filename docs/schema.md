@@ -35,12 +35,12 @@ The review command outputs a flat list of high-signal findings. When there are n
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `category` | `str` | One of: `DEFAULT_VALUE_CHANGED`, `SIGNATURE_CHANGED`, `SYMBOL_REMOVED`, `PARAMETER_ADDED`, `PARAMETER_REMOVED`, `MOVED` |
+| `category` | `str` | One of: `PARAMETER_REMOVED`, `PARAMETER_ADDED_(BREAKING)`, `RETURN_TYPE_CHANGED`, `DEFAULT_VALUE_CHANGED`, `BREAKING_SIGNATURE_CHANGE`, `SIGNATURE_CHANGED`, `SYMBOL_REMOVED`, `SYMBOL_MOVED` |
 | `symbol` | `str` | Symbol name |
 | `file` | `str` | File path |
 | `line` | `int | null` | Line number |
-| `before_signature` | `str` | Previous signature (when applicable) |
-| `after_signature` | `str` | New signature (when applicable) |
+| `before_signature` | `str` | Previous signature. Omitted when not applicable (e.g. removed/moved symbols) |
+| `after_signature` | `str` | New signature. Omitted when not applicable (e.g. removed/moved symbols) |
 | `impact` | `Impact` | Caller impact analysis |
 | `review_hint` | `str` | Suggested reviewer action |
 
