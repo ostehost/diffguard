@@ -4,14 +4,23 @@ from __future__ import annotations
 
 from diffguard.engine.matcher import MatchedSymbol
 from diffguard.engine.signatures import is_breaking_change
-from diffguard.schema import SymbolChange
+from diffguard.schema import SymbolChange, SymbolKind
+
+# (symbol category, change action) -> schema kind Literal.
+_KIND_MAP: dict[tuple[str, str], SymbolKind] = {
+    ("function", "added"): "function_added",
+    ("function", "removed"): "function_removed",
+    ("function", "modified"): "function_modified",
+    ("class", "added"): "class_added",
+    ("class", "removed"): "class_removed",
+    ("class", "modified"): "class_modified",
+}
 
 
-def _kind_prefix(kind: str) -> str:
-    """Map symbol kind to schema prefix ('function' or 'class')."""
-    if kind == "class":
-        return "class"
-    return "function"
+def _change_kind(symbol_kind: str, action: str) -> SymbolKind:
+    """Map a parsed symbol kind + change action to the schema kind Literal."""
+    category = "class" if symbol_kind == "class" else "function"
+    return _KIND_MAP[(category, action)]
 
 
 def classify_changes(matches: list[MatchedSymbol]) -> list[SymbolChange]:
@@ -40,9 +49,8 @@ def _classify_one(m: MatchedSymbol) -> SymbolChange | None:
 
     # Added
     if m.old is None and m.new is not None:
-        prefix = _kind_prefix(m.new.kind)
         return SymbolChange(
-            kind=f"{prefix}_added",  # type: ignore[arg-type]
+            kind=_change_kind(m.new.kind, "added"),
             name=m.new.name,
             signature=m.new.signature,
             line=m.new.start_line,
@@ -50,9 +58,8 @@ def _classify_one(m: MatchedSymbol) -> SymbolChange | None:
 
     # Removed
     if m.new is None and m.old is not None:
-        prefix = _kind_prefix(m.old.kind)
         return SymbolChange(
-            kind=f"{prefix}_removed",  # type: ignore[arg-type]
+            kind=_change_kind(m.old.kind, "removed"),
             name=m.old.name,
             signature=m.old.signature,
             line=m.old.start_line,
@@ -78,9 +85,8 @@ def _classify_one(m: MatchedSymbol) -> SymbolChange | None:
         )
 
     # Body modified, same signature
-    prefix = _kind_prefix(m.new.kind)
     return SymbolChange(
-        kind=f"{prefix}_modified",  # type: ignore[arg-type]
+        kind=_change_kind(m.new.kind, "modified"),
         name=m.new.name,
         signature=m.new.signature,
         line=m.new.start_line,

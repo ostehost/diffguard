@@ -25,19 +25,23 @@ class Meta(BaseModel):
     timing_ms: float | None = None
 
 
+SymbolKind = Literal[
+    "function_added",
+    "function_removed",
+    "function_modified",
+    "class_added",
+    "class_removed",
+    "class_modified",
+    "signature_changed",
+    "moved",
+]
+"""The set of values ``SymbolChange.kind`` may take."""
+
+
 class SymbolChange(BaseModel):
     """A single symbol-level change."""
 
-    kind: Literal[
-        "function_added",
-        "function_removed",
-        "function_modified",
-        "class_added",
-        "class_removed",
-        "class_modified",
-        "signature_changed",
-        "moved",
-    ]
+    kind: SymbolKind
     name: str
     signature: str | None = None
     before_signature: str | None = None
