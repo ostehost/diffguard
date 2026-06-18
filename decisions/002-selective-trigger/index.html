@@ -765,7 +765,7 @@
 <li><strong>File moves with dependents</strong> — imports need updating</li>
 </ul>
 <p>Body-only changes (same signature, different implementation) produce silence.</p>
-<p>Implementation: <code>cli.py::_has_high_signal_changes()</code> checks these criteria. If none match, exit code 0 (silence).</p>
+<p>Implementation: <code>engine/findings.py::is_high_signal()</code> checks these criteria. If none match, exit code 0 (silence).</p>
 <h2 id="consequences">Consequences<a class="headerlink" href="#consequences" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>100% precision</strong> — when DiffGuard speaks, it's useful</li>

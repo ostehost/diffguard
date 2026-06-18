@@ -683,6 +683,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Modules">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#layering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Layering
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -971,6 +988,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Modules">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#layering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Layering
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1198,19 +1232,37 @@
 <td><code>cli.py</code></td>
 <td>CLI args</td>
 <td>exit code + JSON/text</td>
-<td>Click CLI entry point. Commands: <code>review</code>, <code>summarize</code>, <code>context</code> (hidden alias for review), <code>install-hook</code>. Orchestrates pipeline and determines output.</td>
+<td>Click CLI entry point. Commands: <code>review</code>, <code>summarize</code>, <code>context</code> (hidden alias for review), <code>install-hook</code>. Orchestrates: fetch diff → run pipeline → scan deps → extract findings → render. Holds no domain or formatting logic.</td>
 </tr>
 <tr>
 <td><code>git.py</code></td>
 <td>ref range</td>
-<td>changed files + old/new content</td>
-<td>All git subprocess calls. Nothing else touches git.</td>
+<td>raw diff / file text</td>
+<td><strong>The sole owner of git subprocess.</strong> All <code>git</code> calls live here (<code>get_diff</code>, <code>get_file_at_ref</code>, <code>list_files_at_ref</code>, <code>grep_files</code>, …); nothing else runs git. Returns raw text; does no parsing.</td>
+</tr>
+<tr>
+<td><code>diff.py</code></td>
+<td>unified diff text</td>
+<td><code>list[FileDiff]</code></td>
+<td>Unified-diff parser (<code>parse_diff</code>, <code>is_generated</code>, hunk/line model). Pure text parsing, no git access.</td>
 </tr>
 <tr>
 <td><code>engine/_types.py</code></td>
 <td>—</td>
 <td>—</td>
-<td>Shared type aliases and dataclasses (<code>Symbol</code>, <code>ParseResult</code>, <code>compute_body_hash</code>).</td>
+<td>Shared type aliases and dataclasses (<code>Symbol</code>, <code>ParseResult</code>, <code>Reference</code>, <code>compute_body_hash</code>).</td>
+</tr>
+<tr>
+<td><code>engine/_paths.py</code></td>
+<td>path string</td>
+<td>bool</td>
+<td>Shared path classification (<code>is_test_file</code>). Used by summarizer and findings.</td>
+</tr>
+<tr>
+<td><code>engine/_refs.py</code></td>
+<td>ref range string</td>
+<td><code>(old_ref, new_ref)</code></td>
+<td><code>split_ref_range</code> — the one place that parses an <code>A..B</code> range. Shared by cli and pipeline.</td>
 </tr>
 <tr>
 <td><code>engine/parser.py</code></td>
@@ -1228,19 +1280,19 @@
 <td><code>engine/classifier.py</code></td>
 <td>matched pairs</td>
 <td>classified changes</td>
-<td>Labels: added, removed, modified, moved, signature_changed. Sets <code>breaking</code> flag.</td>
+<td>Labels: added, removed, modified, moved, signature_changed. Sets <code>breaking</code> flag. Builds <code>kind</code> via a typed map (<code>SymbolKind</code>).</td>
 </tr>
 <tr>
 <td><code>engine/signatures.py</code></td>
 <td>old + new signatures</td>
 <td>breaking change flags + category labels</td>
-<td>Signature comparison. Detects parameter changes, return type changes, default value changes.</td>
+<td>Signature comparison via shared param-diff predicates. Detects parameter changes, return type changes, default value changes.</td>
 </tr>
 <tr>
 <td><code>engine/deps.py</code></td>
 <td>symbol names + git ref</td>
 <td>external references</td>
-<td>Dependency/caller detection. Uses <code>git grep</code> to pre-filter, then tree-sitter to confirm references in non-diff files.</td>
+<td>Dependency/caller detection. Pre-filters with <code>git grep</code> then uses tree-sitter to confirm references in non-diff files. Delegates <strong>all</strong> git access to <code>git.py</code> (no subprocess of its own).</td>
 </tr>
 <tr>
 <td><code>engine/summarizer.py</code></td>
@@ -1249,10 +1301,28 @@
 <td>Generates oneliner, short, detailed summaries.</td>
 </tr>
 <tr>
+<td><code>engine/findings.py</code></td>
+<td><code>DiffGuardOutput</code> + dep refs</td>
+<td><code>list[Finding]</code></td>
+<td><strong>The high-signal domain layer.</strong> Single source of truth for <code>is_high_signal()</code> / <code>categorize_change()</code>. <code>extract_findings()</code> annotates each finding with its production and test callers.</td>
+</tr>
+<tr>
 <td><code>engine/pipeline.py</code></td>
 <td>ref range + content provider</td>
 <td><code>DiffGuardOutput</code></td>
 <td>Orchestrates parse → match → classify → summarize for all files.</td>
+</tr>
+<tr>
+<td><code>report.py</code></td>
+<td><code>list[Finding]</code></td>
+<td>text / JSON</td>
+<td><strong>Presentation layer.</strong> Pure rendering of findings — signature display, review hints, the text review block, and the structured JSON contract. No git, no trigger logic.</td>
+</tr>
+<tr>
+<td><code>hooks.py</code></td>
+<td>repo path + hook type</td>
+<td>installed hook path</td>
+<td>Git hook shell-script templates and installation. Raises <code>HookError</code> on failure.</td>
 </tr>
 <tr>
 <td><code>schema.py</code></td>
@@ -1262,6 +1332,14 @@
 </tr>
 </tbody>
 </table>
+<h3 id="layering">Layering<a class="headerlink" href="#layering" title="Permanent link">&para;</a></h3>
+<p>The trigger logic — "what counts as high-signal" — lives in exactly one place
+(<code>findings.py::is_high_signal</code>). The CLI orchestrates; the domain decides what is
+a finding; the report renders findings. Presentation depends on the domain, never
+the reverse, and neither runs git.</p>
+<p>Git access is funnelled through <code>git.py</code> alone: it is the only module that spawns
+a <code>git</code> subprocess. Engine modules stay pure of subprocess — <code>deps.py</code>, the one
+git-backed scanner, calls <code>git.py</code> helpers rather than shelling out itself.</p>
 <h2 id="language-plugin-system">Language plugin system<a class="headerlink" href="#language-plugin-system" title="Permanent link">&para;</a></h2>
 <p>The <code>languages/</code> package provides per-language tree-sitter support. Each language module (e.g., <code>languages/python/__init__.py</code>) exports:</p>
 <table>
@@ -1343,7 +1421,7 @@
 <p>This is O(n) and handles the common case well. It deliberately does not attempt fuzzy rename detection — accuracy over comprehensiveness.</p>
 <h2 id="selective-trigger">Selective trigger<a class="headerlink" href="#selective-trigger" title="Permanent link">&para;</a></h2>
 <p>DiffGuard's core design principle: <strong>stay silent when there's nothing useful to say.</strong></p>
-<p>The <code>review</code> command checks for high-signal changes before producing output. If none are found, it exits with code 0 (silence). The logic lives in <code>cli.py::_has_high_signal_changes()</code>:</p>
+<p>The <code>review</code> command checks for high-signal changes before producing output. If none are found, it exits with code 0 (silence). The logic lives in <code>engine/findings.py::is_high_signal()</code>:</p>
 <p>A change is <strong>high-signal</strong> if any of these are true:</p>
 <table>
 <thead>
