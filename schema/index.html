@@ -1157,6 +1157,11 @@
 <td>High-signal findings (may be empty)</td>
 </tr>
 <tr>
+<td><code>warnings</code></td>
+<td><code>list[str]</code></td>
+<td>Non-fatal analysis warnings (e.g. file content unavailable at the ref, so symbol analysis was skipped). Empty in the common case</td>
+</tr>
+<tr>
 <td><code>stats</code></td>
 <td><code>ReviewStats</code></td>
 <td>Analysis statistics</td>
@@ -1164,8 +1169,9 @@
 </tbody>
 </table>
 <blockquote>
-<p><strong>Migration note (0.1.0 → 0.2.0):</strong> added <code>stats.parse_errors</code>. This is an
-additive field; consumers that ignore unknown fields are unaffected.</p>
+<p><strong>Migration note (0.1.0 → 0.2.0):</strong> added <code>stats.parse_errors</code>. Later added the
+top-level <code>warnings</code> list. Both are additive fields; consumers that ignore
+unknown fields are unaffected.</p>
 </blockquote>
 <h3 id="reviewstats"><code>ReviewStats</code><a class="headerlink" href="#reviewstats" title="Permanent link">&para;</a></h3>
 <table>
@@ -1327,13 +1333,14 @@ additive field; consumers that ignore unknown fields are unaffected.</p>
 <a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">      </span><span class="nt">&quot;review_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Verify callers expect the new default value&quot;</span>
 <a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="w">    </span><span class="p">}</span>
 <a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">  </span><span class="p">],</span>
-<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">  </span><span class="nt">&quot;stats&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="w">    </span><span class="nt">&quot;files_analyzed&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
-<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="w">    </span><span class="nt">&quot;symbols_changed&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
-<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="w">    </span><span class="nt">&quot;parse_errors&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
-<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a><span class="w">    </span><span class="nt">&quot;silence_reason&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
-<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="w">  </span><span class="p">}</span>
-<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a><span class="p">}</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">  </span><span class="nt">&quot;warnings&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="w">  </span><span class="nt">&quot;stats&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="w">    </span><span class="nt">&quot;files_analyzed&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="w">    </span><span class="nt">&quot;symbols_changed&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a><span class="w">    </span><span class="nt">&quot;parse_errors&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="w">    </span><span class="nt">&quot;silence_reason&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a><span class="p">}</span>
 </code></pre></div>
 <div class="admonition note">
 <p class="admonition-title">Illustrative</p>
@@ -1403,7 +1410,7 @@ additive field; consumers that ignore unknown fields are unaffected.</p>
 <tr>
 <td><code>warnings</code></td>
 <td><code>list[str]</code></td>
-<td>Parse errors, truncation signals</td>
+<td>Non-fatal analysis warnings, e.g. a file's content was unavailable at the requested ref so symbol analysis was skipped</td>
 </tr>
 <tr>
 <td><code>timing_ms</code></td>

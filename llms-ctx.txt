@@ -202,6 +202,7 @@ When there are no findings:
   "version": "0.2.0",
   "ref_range": "HEAD~1..HEAD",
   "findings": [],
+  "warnings": [],
   "stats": {
     "files_analyzed": 1,
     "symbols_changed": 0,
@@ -315,10 +316,12 @@ The review command outputs a flat list of high-signal findings. When there are n
 | `version` | `str` | Schema version (currently `"0.2.0"`) |
 | `ref_range` | `str` | Git ref range analyzed |
 | `findings` | `list[Finding]` | High-signal findings (may be empty) |
+| `warnings` | `list[str]` | Non-fatal analysis warnings (e.g. file content unavailable at the ref, so symbol analysis was skipped). Empty in the common case |
 | `stats` | `ReviewStats` | Analysis statistics |
 
-> **Migration note (0.1.0 → 0.2.0):** added `stats.parse_errors`. This is an
-> additive field; consumers that ignore unknown fields are unaffected.
+> **Migration note (0.1.0 → 0.2.0):** added `stats.parse_errors`. Later added the
+> top-level `warnings` list. Both are additive fields; consumers that ignore
+> unknown fields are unaffected.
 
 ### `ReviewStats`
 
@@ -382,6 +385,7 @@ The review command outputs a flat list of high-signal findings. When there are n
       "review_hint": "Verify callers expect the new default value"
     }
   ],
+  "warnings": [],
   "stats": {
     "files_analyzed": 2,
     "symbols_changed": 2,
@@ -418,7 +422,7 @@ The summarize command outputs a complete structural map of the diff. Defined by 
 |-------|------|-------------|
 | `ref_range` | `str` | Git ref range analyzed |
 | `stats` | `DiffStats` | `files`, `additions`, `deletions` counts |
-| `warnings` | `list[str]` | Parse errors, truncation signals |
+| `warnings` | `list[str]` | Non-fatal analysis warnings, e.g. a file's content was unavailable at the requested ref so symbol analysis was skipped |
 | `timing_ms` | `float | None` | Wall-clock time for analysis |
 
 ### `FileChange`
@@ -557,6 +561,7 @@ Returns a complete structural summary of the diff (~200-300 tokens). Always prod
       "review_hint": "Check all callers handle the new signature"
     }
   ],
+  "warnings": [],
   "stats": {
     "files_analyzed": 5,
     "symbols_changed": 8,
@@ -665,7 +670,7 @@ Each module has a single responsibility. No horizontal imports between engine mo
 
 | Module | Input | Output | Responsibility |
 |--------|-------|--------|---------------|
-| `cli.py` | CLI args | exit code + JSON/text | Click CLI entry point. Commands: `review`, `summarize`, `context` (hidden alias for review), `install-hook`. Orchestrates: fetch diff → run pipeline → scan deps → extract findings → render. Holds no domain or formatting logic. |
+| `cli.py` | CLI args | exit code + JSON/text | Click CLI entry point. Commands: `review`, `summarize`, `install-hook`. Orchestrates: fetch diff → run pipeline → scan deps → extract findings → render. Holds no domain or formatting logic. |
 | `git.py` | ref range | raw diff / file text | **The sole owner of git subprocess.** All `git` calls live here (`get_diff`, `get_file_at_ref`, `list_files_at_ref`, `grep_files`, …); nothing else runs git. Returns raw text; does no parsing. |
 | `diff.py` | unified diff text | `list[FileDiff]` | Unified-diff parser (`parse_diff`, `is_generated`, hunk/line model). Pure text parsing, no git access. |
 | `engine/_types.py` | — | — | Shared type aliases and dataclasses (`Symbol`, `ParseResult`, `Reference`, `compute_body_hash`). |
