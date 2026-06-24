@@ -116,175 +116,136 @@ def parse_diff(
     i = 0
 
     while i < len(lines):
-        line = lines[i]
-
-        # Look for "diff --git" header
-        if not line.startswith("diff --git "):
+        match = re.match(r"^diff --git a/(.*) b/(.*)$", lines[i])
+        if match is None:
             i += 1
             continue
 
-        # Parse the diff --git a/X b/Y header
-        match = re.match(r"^diff --git a/(.*) b/(.*)$", line)
-        if not match:
-            i += 1
-            continue
+        old_path, new_path, change_type, is_binary, i = _parse_file_header(
+            lines, i + 1, match.group(1), match.group(2)
+        )
 
-        a_path = match.group(1)
-        b_path = match.group(2)
-        i += 1
-
-        # Consume extended header lines
-        old_path: str | None = a_path
-        new_path: str | None = b_path
-        is_binary = False
-        change_type: Literal["added", "removed", "modified"] = "modified"
-
-        while i < len(lines) and not lines[i].startswith("diff --git "):
-            hdr = lines[i]
-
-            if hdr.startswith("Binary files"):
-                is_binary = True
-                i += 1
-                break
-
-            if hdr.startswith("new file mode"):
-                change_type = "added"
-                old_path = None
-                i += 1
-                continue
-
-            if hdr.startswith("deleted file mode"):
-                change_type = "removed"
-                new_path = None
-                i += 1
-                continue
-
-            if hdr.startswith("--- "):
-                if hdr == "--- /dev/null":
-                    old_path = None
-                    change_type = "added"
-                i += 1
-                continue
-
-            if hdr.startswith("+++ "):
-                if hdr == "+++ /dev/null":
-                    new_path = None
-                    change_type = "removed"
-                i += 1
-                continue
-
-            if hdr.startswith("@@"):
-                break  # Start of hunks
-
-            # Other extended headers (index, similarity, etc.)
-            i += 1
-            continue
-
-        # Determine canonical path for generated check
         canonical = new_path or old_path or ""
-        gen = False if skip_generated else is_generated(canonical, generated_patterns)
-
         file_diff = FileDiff(
             old_path=old_path,
             new_path=new_path,
             change_type=change_type,
             binary=is_binary,
-            generated=gen,
+            generated=False if skip_generated else is_generated(canonical, generated_patterns),
         )
-
-        # Skip hunk parsing for binary files
-        if is_binary:
-            files.append(file_diff)
-            continue
-
-        # Parse hunks
-        while i < len(lines) and not lines[i].startswith("diff --git "):
-            if lines[i].startswith("@@"):
-                hunk_match = _HUNK_RE.match(lines[i])
-                if not hunk_match:
-                    i += 1
-                    continue
-
-                header = HunkHeader(
-                    old_start=int(hunk_match.group(1)),
-                    old_count=int(hunk_match.group(2) or "1"),
-                    new_start=int(hunk_match.group(3)),
-                    new_count=int(hunk_match.group(4) or "1"),
-                    section=hunk_match.group(5).strip() if hunk_match.group(5) else "",
-                )
-                hunk = DiffHunk(header=header)
-                i += 1
-
-                old_ln = header.old_start
-                new_ln = header.new_start
-
-                while i < len(lines) and not lines[i].startswith(("diff --git ", "@@")):
-                    dl = lines[i]
-                    if dl.startswith("+"):
-                        hunk.lines.append(
-                            DiffLine(
-                                origin="+",
-                                content=dl[1:],
-                                old_lineno=None,
-                                new_lineno=new_ln,
-                            )
-                        )
-                        new_ln += 1
-                    elif dl.startswith("-"):
-                        hunk.lines.append(
-                            DiffLine(
-                                origin="-",
-                                content=dl[1:],
-                                old_lineno=old_ln,
-                                new_lineno=None,
-                            )
-                        )
-                        old_ln += 1
-                    elif dl.startswith(" "):
-                        hunk.lines.append(
-                            DiffLine(
-                                origin=" ",
-                                content=dl[1:],
-                                old_lineno=old_ln,
-                                new_lineno=new_ln,
-                            )
-                        )
-                        old_ln += 1
-                        new_ln += 1
-                    elif dl.startswith("\\ No newline at end of file"):
-                        i += 1
-                        continue
-                    else:
-                        # Empty context line (blank line in diff)
-                        if dl == "":
-                            # Could be end of diff or empty context line
-                            # Check if next line continues the diff
-                            if i + 1 < len(lines) and lines[i + 1].startswith(
-                                ("diff --git ", "@@", "+", "-", " ", "\\ ")
-                            ):
-                                # empty context line
-                                hunk.lines.append(
-                                    DiffLine(
-                                        origin=" ",
-                                        content="",
-                                        old_lineno=old_ln,
-                                        new_lineno=new_ln,
-                                    )
-                                )
-                                old_ln += 1
-                                new_ln += 1
-                            else:
-                                i += 1
-                                break
-                        else:
-                            i += 1
-                            continue
-                    i += 1
-
-                file_diff.hunks.append(hunk)
-            else:
-                i += 1
-
+        if not is_binary:
+            i = _parse_hunks(lines, i, file_diff)
         files.append(file_diff)
 
     return files
+
+
+def _parse_file_header(
+    lines: list[str],
+    i: int,
+    a_path: str,
+    b_path: str,
+) -> tuple[str | None, str | None, Literal["added", "removed", "modified"], bool, int]:
+    """Consume a file's extended header (mode / ---/+++ / Binary) lines.
+
+    *i* indexes the line after ``diff --git``. Returns
+    ``(old_path, new_path, change_type, is_binary, next_i)`` where *next_i*
+    indexes the first hunk header (``@@``) or the following file.
+    """
+    old_path: str | None = a_path
+    new_path: str | None = b_path
+    is_binary = False
+    change_type: Literal["added", "removed", "modified"] = "modified"
+
+    while i < len(lines) and not lines[i].startswith("diff --git "):
+        hdr = lines[i]
+        if hdr.startswith("Binary files"):
+            is_binary = True
+            i += 1
+            break
+        if hdr.startswith("@@"):
+            break  # leave i on the @@ line for the hunk parser
+        if hdr.startswith("new file mode"):
+            change_type = "added"
+            old_path = None
+        elif hdr.startswith("deleted file mode"):
+            change_type = "removed"
+            new_path = None
+        elif hdr == "--- /dev/null":
+            old_path = None
+            change_type = "added"
+        elif hdr == "+++ /dev/null":
+            new_path = None
+            change_type = "removed"
+        # Other extended headers (index, similarity, plain ---/+++) carry no
+        # path/type signal and are simply consumed.
+        i += 1
+
+    return old_path, new_path, change_type, is_binary, i
+
+
+def _parse_hunks(lines: list[str], i: int, file_diff: FileDiff) -> int:
+    """Parse every hunk of one file. Returns the index of the next file header."""
+    while i < len(lines) and not lines[i].startswith("diff --git "):
+        if not lines[i].startswith("@@"):
+            i += 1
+            continue
+        match = _HUNK_RE.match(lines[i])
+        if match is None:
+            i += 1
+            continue
+        header = HunkHeader(
+            old_start=int(match.group(1)),
+            old_count=int(match.group(2) or "1"),
+            new_start=int(match.group(3)),
+            new_count=int(match.group(4) or "1"),
+            section=match.group(5).strip() if match.group(5) else "",
+        )
+        hunk, i = _parse_hunk_body(lines, i, header)
+        file_diff.hunks.append(hunk)
+    return i
+
+
+def _blank_is_context(lines: list[str], i: int) -> bool:
+    """A blank diff line is an (empty) context line only when more diff content
+    follows it; otherwise it marks the end of the diff."""
+    return i + 1 < len(lines) and lines[i + 1].startswith(
+        ("diff --git ", "@@", "+", "-", " ", "\\ ")
+    )
+
+
+def _parse_hunk_body(lines: list[str], i: int, header: HunkHeader) -> tuple[DiffHunk, int]:
+    """Parse a hunk's body lines. *i* indexes the ``@@`` header; returns the
+    populated hunk and the index of the first line past it."""
+    hunk = DiffHunk(header=header)
+    i += 1
+    old_ln = header.old_start
+    new_ln = header.new_start
+
+    while i < len(lines) and not lines[i].startswith(("diff --git ", "@@")):
+        dl = lines[i]
+        if dl.startswith("+"):
+            hunk.lines.append(DiffLine(origin="+", content=dl[1:], new_lineno=new_ln))
+            new_ln += 1
+        elif dl.startswith("-"):
+            hunk.lines.append(DiffLine(origin="-", content=dl[1:], old_lineno=old_ln))
+            old_ln += 1
+        elif dl.startswith(" "):
+            hunk.lines.append(
+                DiffLine(origin=" ", content=dl[1:], old_lineno=old_ln, new_lineno=new_ln)
+            )
+            old_ln += 1
+            new_ln += 1
+        elif dl == "" and _blank_is_context(lines, i):
+            hunk.lines.append(
+                DiffLine(origin=" ", content="", old_lineno=old_ln, new_lineno=new_ln)
+            )
+            old_ln += 1
+            new_ln += 1
+        elif dl == "":
+            i += 1
+            break  # a blank line with nothing after it ends the diff
+        # else: "\ No newline at end of file" / any other line — skip, don't record.
+        i += 1
+
+    return hunk, i

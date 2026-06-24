@@ -285,3 +285,41 @@ index abc..def 100644
         files = parse_diff(diff)
         assert files[0].additions == 1
         assert files[0].deletions == 1
+
+    def test_empty_context_line_keeps_line_numbers(self) -> None:
+        # A blank line *inside* a hunk (an unchanged empty source line) is an
+        # empty context line, not the end of the diff, as long as more diff
+        # content follows. Line numbering must keep advancing across it.
+        diff = """\
+diff --git a/f.py b/f.py
+index abc..def 100644
+--- a/f.py
++++ b/f.py
+@@ -1,4 +1,4 @@
+ a = 1
+
+-b = 2
++b = 3
+"""
+        files = parse_diff(diff)
+        hunk = files[0].hunks[0]
+        # the blank line is recorded as an empty context line
+        blanks = [ln for ln in hunk.lines if ln.origin == " " and ln.content == ""]
+        assert len(blanks) == 1
+        # numbering continued past it: the removed/added line is at line 3
+        removed = [ln for ln in hunk.lines if ln.origin == "-"][0]
+        added = [ln for ln in hunk.lines if ln.origin == "+"][0]
+        assert removed.old_lineno == 3
+        assert added.new_lineno == 3
+        assert files[0].additions == 1
+        assert files[0].deletions == 1
+
+    def test_trailing_blank_line_ends_hunk(self) -> None:
+        # A blank line with nothing after it terminates the hunk rather than
+        # being recorded as a phantom context line.
+        diff = "diff --git a/f.py b/f.py\n--- a/f.py\n+++ b/f.py\n@@ -1 +1 @@\n-x\n+y\n\n"
+        files = parse_diff(diff)
+        hunk = files[0].hunks[0]
+        assert not any(ln.origin == " " and ln.content == "" for ln in hunk.lines)
+        assert files[0].additions == 1
+        assert files[0].deletions == 1
