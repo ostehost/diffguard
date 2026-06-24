@@ -213,6 +213,7 @@ def render_json(
         "version": _VERSION,
         "ref_range": ref_range,
         "findings": [_finding_json(f) for f in findings],
+        "warnings": list(output.meta.warnings),
         "stats": {
             "files_analyzed": len(output.files),
             "symbols_changed": symbols_changed,
@@ -229,6 +230,7 @@ def render_empty_json(ref_range: str, silence_reason: str) -> str:
         "version": _VERSION,
         "ref_range": ref_range,
         "findings": [],
+        "warnings": [],
         "stats": {
             "files_analyzed": 0,
             "symbols_changed": 0,

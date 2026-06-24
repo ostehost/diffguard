@@ -236,6 +236,23 @@ class TestRenderJson:
         data = json.loads(render_json(out, "a..b", [_finding(sc, "SYMBOL REMOVED")]))
         assert data["stats"]["silence_reason"] is None
 
+    def test_warnings_surfaced(self) -> None:
+        out = DiffGuardOutput(
+            meta=Meta(
+                ref_range="a..b",
+                stats=DiffStats(files=1, additions=0, deletions=0),
+                warnings=["mod.py: content unavailable at ref — symbol analysis skipped"],
+            ),
+            files=[_fc("mod.py")],
+        )
+        data = json.loads(render_json(out, "a..b", []))
+        assert data["warnings"] == ["mod.py: content unavailable at ref — symbol analysis skipped"]
+
+    def test_warnings_empty_by_default(self) -> None:
+        out = _output(_fc("a.py", [_sc("function_removed", name="x")]))
+        data = json.loads(render_json(out, "a..b", []))
+        assert data["warnings"] == []
+
 
 # ---------------------------------------------------------------------------
 # render_empty_json

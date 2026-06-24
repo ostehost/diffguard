@@ -52,13 +52,14 @@ def run_pipeline(
 
     file_diffs = parse_diff(diff_text, skip_generated=skip_generated)
     file_changes: list[FileChange] = []
+    warnings: list[str] = []
 
     # For cross-file move detection
     unmatched_old: dict[str, list[Symbol]] = {}
     unmatched_new: dict[str, list[Symbol]] = {}
 
     for fd in file_diffs:
-        fc = _process_file(fd, ref_range, get_content, unmatched_old, unmatched_new)
+        fc = _process_file(fd, ref_range, get_content, unmatched_old, unmatched_new, warnings)
         file_changes.append(fc)
 
     # Cross-file moves
@@ -81,6 +82,7 @@ def run_pipeline(
     meta = Meta(
         ref_range=ref_range,
         stats=DiffStats(files=len(file_diffs), additions=total_add, deletions=total_del),
+        warnings=warnings,
         timing_ms=round(elapsed_ms, 2),
     )
 
@@ -103,6 +105,7 @@ def _process_file(
     get_content: FileContentProvider | None,
     unmatched_old: dict[str, list[Symbol]],
     unmatched_new: dict[str, list[Symbol]],
+    warnings: list[str],
 ) -> FileChange:
     """Process a single FileDiff into a FileChange."""
     path = fd.path
@@ -129,6 +132,16 @@ def _process_file(
 
     old_source = get_content(old_ref, fd.old_path or "") if fd.old_path else None
     new_source = get_content(new_ref, fd.new_path or "") if fd.new_path else None
+
+    # If the diff says a side exists but its content can't be fetched, the
+    # symbol comparison would be made against an empty baseline and fabricate
+    # spurious "everything added/removed" changes. Skip analysis and surface a
+    # warning instead of emitting misleading findings.
+    if (fd.old_path is not None and old_source is None) or (
+        fd.new_path is not None and new_source is None
+    ):
+        warnings.append(f"{path}: content unavailable at ref — symbol analysis skipped")
+        return FileChange(path=path, language=language, change_type=fd.change_type)
 
     old_symbols: list[Symbol] = []
     new_symbols: list[Symbol] = []

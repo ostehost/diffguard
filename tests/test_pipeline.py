@@ -99,6 +99,22 @@ def test_no_content_provider() -> None:
     assert result.files[0].changes == []
 
 
+def test_healthy_diff_has_no_warnings() -> None:
+    get = _content_provider({"utils.py": OLD_UTILS}, {"utils.py": NEW_UTILS})
+    result = run_pipeline(SIMPLE_DIFF, "abc..def", get)  # type: ignore[arg-type]
+    assert result.meta.warnings == []
+
+
+def test_missing_content_warns_and_skips_analysis() -> None:
+    # The diff says utils.py was modified, but the new-side content can't be
+    # fetched (e.g. git show failed). The pipeline must surface a warning rather
+    # than fabricate "everything removed" findings from an empty baseline.
+    get = _content_provider({"utils.py": OLD_UTILS}, {})  # new side unavailable
+    result = run_pipeline(SIMPLE_DIFF, "abc..def", get)  # type: ignore[arg-type]
+    assert result.files[0].changes == []
+    assert any("utils.py" in w and "content unavailable" in w for w in result.meta.warnings)
+
+
 def test_summary_has_focus() -> None:
     get = _content_provider({"utils.py": OLD_UTILS}, {"utils.py": NEW_UTILS})
     result = run_pipeline(SIMPLE_DIFF, "abc..def", get)  # type: ignore[arg-type]

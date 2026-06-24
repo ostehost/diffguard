@@ -17,10 +17,12 @@ The review command outputs a flat list of high-signal findings. When there are n
 | `version` | `str` | Schema version (currently `"0.2.0"`) |
 | `ref_range` | `str` | Git ref range analyzed |
 | `findings` | `list[Finding]` | High-signal findings (may be empty) |
+| `warnings` | `list[str]` | Non-fatal analysis warnings (e.g. file content unavailable at the ref, so symbol analysis was skipped). Empty in the common case |
 | `stats` | `ReviewStats` | Analysis statistics |
 
-> **Migration note (0.1.0 → 0.2.0):** added `stats.parse_errors`. This is an
-> additive field; consumers that ignore unknown fields are unaffected.
+> **Migration note (0.1.0 → 0.2.0):** added `stats.parse_errors`. Later added the
+> top-level `warnings` list. Both are additive fields; consumers that ignore
+> unknown fields are unaffected.
 
 ### `ReviewStats`
 
@@ -84,6 +86,7 @@ The review command outputs a flat list of high-signal findings. When there are n
       "review_hint": "Verify callers expect the new default value"
     }
   ],
+  "warnings": [],
   "stats": {
     "files_analyzed": 2,
     "symbols_changed": 2,
@@ -120,7 +123,7 @@ The summarize command outputs a complete structural map of the diff. Defined by 
 |-------|------|-------------|
 | `ref_range` | `str` | Git ref range analyzed |
 | `stats` | `DiffStats` | `files`, `additions`, `deletions` counts |
-| `warnings` | `list[str]` | Parse errors, truncation signals |
+| `warnings` | `list[str]` | Non-fatal analysis warnings, e.g. a file's content was unavailable at the requested ref so symbol analysis was skipped |
 | `timing_ms` | `float | None` | Wall-clock time for analysis |
 
 ### `FileChange`
