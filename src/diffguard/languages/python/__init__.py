@@ -5,7 +5,7 @@ from __future__ import annotations
 import tree_sitter
 import tree_sitter_python
 
-from diffguard.engine._types import Symbol, compute_body_hash
+from diffguard.engine._types import ParsedSymbolKind, Symbol, compute_body_hash
 from diffguard.languages._utils import node_text
 
 
@@ -81,7 +81,7 @@ def _extract_function(
     signature = _build_function_signature(node, decorators=None)
     body_node = node.child_by_field_name("body")
     body_text = node_text(body_node) if body_node else ""
-    kind = "method" if parent_class else "function"
+    kind: ParsedSymbolKind = "method" if parent_class else "function"
 
     symbols.append(
         Symbol(
@@ -149,7 +149,7 @@ def _extract_decorated(
         signature = _build_function_signature(definition, decorators=decorators)
         body_node = definition.child_by_field_name("body")
         body_text = node_text(body_node) if body_node else ""
-        kind = "method" if parent_class else "function"
+        kind: ParsedSymbolKind = "method" if parent_class else "function"
 
         symbols.append(
             Symbol(

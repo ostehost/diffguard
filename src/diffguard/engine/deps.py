@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import tree_sitter
 
-from diffguard.engine._types import Reference
+from diffguard.engine._types import Reference, RefContext
 from diffguard.git import get_file_at_ref, grep_files, list_files_at_ref
 from diffguard.languages import detect_language, get_parser
 
@@ -48,7 +48,7 @@ def _scan_file_for_symbols(
     source: str,
     language: str,
     symbol_names: set[str],
-) -> list[tuple[str, int, str, str]]:
+) -> list[tuple[str, int, RefContext, str]]:
     """Scan a file for references to symbol names.
 
     Returns list of (symbol_name, line, context, source_line).
@@ -59,14 +59,14 @@ def _scan_file_for_symbols(
     source_lines = source.splitlines()
 
     id_types = _IDENTIFIER_TYPES.get(language, {"identifier"})
-    results: list[tuple[str, int, str, str]] = []
+    results: list[tuple[str, int, RefContext, str]] = []
 
     def _walk(node: tree_sitter.Node) -> None:
         if node.type in id_types:
             name = source_bytes[node.start_byte : node.end_byte].decode("utf-8")
             if name in symbol_names:
                 line = node.start_point.row + 1
-                ctx = "import" if _is_import_context(node) else "call"
+                ctx: RefContext = "import" if _is_import_context(node) else "call"
                 src_line = source_lines[line - 1].strip() if line <= len(source_lines) else ""
                 results.append((name, line, ctx, src_line))
         for child in node.children:

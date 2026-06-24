@@ -5,6 +5,13 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass, field
+from typing import Literal
+
+ParsedSymbolKind = Literal["function", "class", "method"]
+"""The kinds of symbol the language extractors emit."""
+
+RefContext = Literal["import", "call"]
+"""How a symbol reference is used at a call site."""
 
 
 @dataclass(frozen=True)
@@ -12,7 +19,7 @@ class Symbol:
     """A parsed symbol from source code."""
 
     name: str
-    kind: str  # "function", "class", "method"
+    kind: ParsedSymbolKind
     signature: str  # full signature text
     start_line: int
     end_line: int
@@ -35,7 +42,7 @@ class Reference:
     file_path: str
     line: int
     symbol_name: str
-    context: str  # "import" or "call"
+    context: RefContext
     source_line: str = ""  # the actual source line (stripped)
 
 
