@@ -8,10 +8,7 @@ import sys
 import click
 
 from diffguard import __version__, hooks, report
-from diffguard.engine._refs import split_ref_range
-from diffguard.engine._types import Reference
-from diffguard.engine.deps import find_references
-from diffguard.engine.findings import extract_findings, has_high_signal
+from diffguard.engine.findings import extract_findings, has_high_signal, scan_dependencies
 from diffguard.engine.pipeline import FileContentProvider, run_pipeline
 from diffguard.git import (
     get_diff,
@@ -200,30 +197,6 @@ def summarize(
         sys.exit(EXIT_ERROR)
 
 
-def _scan_dependencies(
-    output: DiffGuardOutput,
-    ref_range: str,
-    repo: str,
-) -> list[Reference] | None:
-    """Find external callers of every changed symbol, or None if there are none."""
-    changed_symbols: list[str] = []
-    changed_files: set[str] = set()
-    for fc in output.files:
-        changed_files.add(fc.path)
-        changed_symbols.extend(sc.name for sc in fc.changes)
-
-    if not changed_symbols:
-        return None
-
-    _, after_ref = split_ref_range(ref_range)
-    return find_references(
-        repo_path=repo,
-        changed_symbols=changed_symbols,
-        ref=after_ref,
-        changed_files=changed_files,
-    )
-
-
 def _run_review(
     ref_range: str,
     repo: str,
@@ -255,7 +228,7 @@ def _run_review(
 
         # Staged review compares HEAD to the index; dependency scanning currently
         # works on committed refs, so pre-commit mode analyzes only the staged diff.
-        dep_refs = _scan_dependencies(output, ref_range, repo) if deps and not staged else None
+        dep_refs = scan_dependencies(output, ref_range, repo) if deps and not staged else None
 
         findings = extract_findings(output, dep_refs)
         has_findings = has_high_signal(output)

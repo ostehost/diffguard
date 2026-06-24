@@ -12,7 +12,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from diffguard.engine._paths import is_test_file
+from diffguard.engine._refs import split_ref_range
 from diffguard.engine._types import Reference
+from diffguard.engine.deps import find_references
 from diffguard.engine.signatures import classify_signature_change
 from diffguard.schema import DiffGuardOutput, FileChange, SymbolChange
 
@@ -61,6 +63,38 @@ class Finding:
     def path(self) -> str:
         """Path of the file containing the change."""
         return self.file.path
+
+
+def scan_dependencies(
+    output: DiffGuardOutput,
+    ref_range: str,
+    repo_path: str,
+) -> list[Reference] | None:
+    """Find external callers of every changed symbol, or None if there are none.
+
+    Composes a pipeline result into the caller-reference scan: collects the
+    changed symbols/files, resolves the "after" ref, and delegates the actual
+    tree-sitter scanning to :func:`~diffguard.engine.deps.find_references`. This
+    is the other half of the ``DiffGuardOutput`` → ``Finding`` flow that
+    :func:`extract_findings` completes, so it lives in the domain layer rather
+    than the CLI.
+    """
+    changed_symbols: list[str] = []
+    changed_files: set[str] = set()
+    for fc in output.files:
+        changed_files.add(fc.path)
+        changed_symbols.extend(sc.name for sc in fc.changes)
+
+    if not changed_symbols:
+        return None
+
+    _, after_ref = split_ref_range(ref_range)
+    return find_references(
+        repo_path=repo_path,
+        changed_symbols=changed_symbols,
+        ref=after_ref,
+        changed_files=changed_files,
+    )
 
 
 def has_high_signal(output: DiffGuardOutput) -> bool:
