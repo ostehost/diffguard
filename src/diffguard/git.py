@@ -62,6 +62,29 @@ def get_staged_diff(repo_path: str | Path = ".") -> str:
     return result.stdout
 
 
+def get_merge_base(
+    ref_a: str,
+    ref_b: str,
+    repo_path: str | Path = ".",
+) -> str | None:
+    """Return the merge-base commit of two refs, or None if it can't be found.
+
+    Used to resolve git's three-dot (``A...B``) symmetric-difference syntax to a
+    concrete base commit so the diff and the symbol baseline agree.
+    """
+    result = subprocess.run(
+        ["git", "merge-base", ref_a, ref_b],
+        capture_output=True,
+        text=True,
+        cwd=str(repo_path),
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+    sha = result.stdout.strip()
+    return sha or None
+
+
 def get_file_at_ref(
     ref: str,
     file_path: str,

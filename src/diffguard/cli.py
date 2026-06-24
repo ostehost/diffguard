@@ -13,7 +13,13 @@ from diffguard.engine._types import Reference
 from diffguard.engine.deps import find_references
 from diffguard.engine.findings import extract_findings, has_high_signal
 from diffguard.engine.pipeline import FileContentProvider, run_pipeline
-from diffguard.git import get_diff, get_file_at_ref, get_file_from_index, get_staged_diff
+from diffguard.git import (
+    get_diff,
+    get_file_at_ref,
+    get_file_from_index,
+    get_merge_base,
+    get_staged_diff,
+)
 from diffguard.schema import DiffGuardOutput
 
 logger = logging.getLogger(__name__)
@@ -44,6 +50,26 @@ def _make_staged_content_provider(repo_path: str) -> FileContentProvider:
         return get_file_at_ref(ref, file_path, repo_path=repo_path)
 
     return _get
+
+
+def _normalize_ref_range(ref_range: str, repo: str) -> str:
+    """Resolve git's three-dot range to a concrete ``<merge-base>..<new>`` range.
+
+    ``git diff A...B`` compares ``B`` against the merge-base of ``A`` and ``B``,
+    so the symbol baseline must use that same base. When the merge-base resolves
+    we rewrite ``A...B`` to ``<merge-base>..B`` — the diff and the per-file
+    content fetch then agree on the baseline. If it can't be resolved the range
+    is left untouched, letting ``git diff`` surface the error instead of the
+    pipeline silently analyzing against the wrong base. Two-dot and bare ranges
+    pass through unchanged.
+    """
+    if "..." not in ref_range:
+        return ref_range
+    old, _, new = ref_range.partition("...")
+    base = get_merge_base(old or "HEAD", new or "HEAD", repo)
+    if base is None:
+        return ref_range
+    return f"{base}..{new or 'HEAD'}"
 
 
 def _format_output(
@@ -137,6 +163,7 @@ def summarize(
             range_label = "stdin"
             content_provider = None
         elif ref_range is not None:
+            ref_range = _normalize_ref_range(ref_range, repo)
             diff_text = get_diff(ref_range, repo_path=repo)
             range_label = ref_range
             content_provider = _make_content_provider(repo)
@@ -213,6 +240,7 @@ def _run_review(
             ref_range = "HEAD..:index"
             content_provider = _make_staged_content_provider(repo)
         else:
+            ref_range = _normalize_ref_range(ref_range, repo)
             diff_text = get_diff(ref_range, repo_path=repo)
             content_provider = _make_content_provider(repo)
 
