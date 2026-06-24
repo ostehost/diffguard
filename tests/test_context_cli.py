@@ -1,4 +1,4 @@
-"""Tests for the `diffguard review` (and `context` alias) CLI command."""
+"""Tests for the `diffguard review` CLI command."""
 
 from __future__ import annotations
 
@@ -236,40 +236,6 @@ class TestReviewCommand:
 
         assert result.exit_code == EXIT_ERROR
         assert "--staged cannot be combined with a ref range" in result.output
-
-
-class TestContextAlias:
-    """Ensure the `context` command still works as a hidden alias."""
-
-    @_skip_in_ci
-    def test_context_still_works(self):
-        """context command is still accessible."""
-        runner = CliRunner()
-        result = runner.invoke(main, ["context", "HEAD~1..HEAD", "--repo", "."])
-        assert result.exit_code in (EXIT_SUCCESS, EXIT_FINDINGS)
-
-    @_skip_in_ci
-    def test_context_with_json(self):
-        """context alias supports --format json."""
-        runner = CliRunner()
-        result = runner.invoke(main, ["context", "HEAD~1..HEAD", "--repo", ".", "--format", "json"])
-        assert result.exit_code in (EXIT_SUCCESS, EXIT_FINDINGS)
-        data = json.loads(result.output)
-        assert "version" in data
-
-    def test_context_hidden_in_help(self):
-        """context should not appear in --help output."""
-        runner = CliRunner()
-        result = runner.invoke(main, ["--help"])
-        assert "review" in result.output
-        assert "context" not in result.output
-
-    @_skip_in_ci
-    def test_context_default_ref_range(self):
-        """context alias also defaults to HEAD~1..HEAD."""
-        runner = CliRunner()
-        result = runner.invoke(main, ["context", "--repo", "."])
-        assert result.exit_code in (EXIT_SUCCESS, EXIT_FINDINGS)
 
 
 class TestHelpText:

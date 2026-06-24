@@ -206,7 +206,7 @@ def _run_review(
     *,
     staged: bool = False,
 ) -> None:
-    """Shared implementation for review/context commands."""
+    """Core implementation behind the review command."""
     try:
         if staged:
             diff_text = get_staged_diff(repo_path=repo)
@@ -308,32 +308,6 @@ def review(
     if ref_range is None:
         ref_range = "HEAD~1..HEAD"
     _run_review(ref_range, repo, deps, verbose, fmt, staged=staged)
-
-
-@main.command(hidden=True)
-@click.argument("ref_range", required=False, default=None)
-@click.option("--repo", default=".", help="Repository path (default: current directory).")
-@click.option(
-    "--deps/--no-deps", default=True, help="Enable dependency scanning (default: enabled)."
-)
-@click.option(
-    "--verbose",
-    is_flag=True,
-    default=False,
-    help="Show full output even when no high-signal changes.",
-)
-@click.option(
-    "--format",
-    "fmt",
-    type=click.Choice(["text", "json"]),
-    default="text",
-    help="Output format: 'text' for human-readable review, 'json' for structured output.",
-)
-def context(ref_range: str | None, repo: str, deps: bool, verbose: bool, fmt: str) -> None:
-    """Alias for 'review' (deprecated)."""
-    if ref_range is None:
-        ref_range = "HEAD~1..HEAD"
-    _run_review(ref_range, repo, deps, verbose, fmt)
 
 
 @main.command("install-hook")
