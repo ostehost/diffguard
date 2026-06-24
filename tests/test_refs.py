@@ -3,10 +3,13 @@ merge-base normalization (cli._normalize_ref_range)."""
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
-from diffguard.cli import _normalize_ref_range
+from click.testing import CliRunner
+
+from diffguard.cli import _normalize_ref_range, main
 from diffguard.engine._refs import split_ref_range
 from diffguard.git import get_merge_base
 
@@ -105,3 +108,41 @@ class TestMergeBaseNormalization:
     def test_unresolvable_three_dot_left_untouched(self, tmp_path: Path) -> None:
         subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
         assert _normalize_ref_range("nope-a...nope-b", str(tmp_path)) == "nope-a...nope-b"
+
+
+def _review_findings(repo: Path, ref_range: str) -> list[dict]:
+    """Run `review <ref_range> --format json --no-deps` and return its findings."""
+    result = CliRunner().invoke(
+        main, ["review", ref_range, "--repo", str(repo), "--no-deps", "--format", "json"]
+    )
+    return json.loads(result.output)["findings"]
+
+
+class TestThreeDotCLIIntegration:
+    """The behavioral payoff of merge-base normalization, wired through the CLI.
+
+    On the diverged repo, `unrelated` exists only on main (added after the fork).
+    Two-dot `main..feature` sees it as removed; three-dot `main...feature` compares
+    against the merge-base, where it never existed, so it must NOT appear.
+    """
+
+    def test_two_dot_misattributes_main_only_symbol(self, tmp_path: Path) -> None:
+        _make_diverged_repo(tmp_path)
+        symbols = {f["symbol"] for f in _review_findings(tmp_path, "main..feature")}
+        assert "unrelated" in symbols  # main's churn, wrongly attributed to feature
+
+    def test_three_dot_uses_merge_base_baseline(self, tmp_path: Path) -> None:
+        _make_diverged_repo(tmp_path)
+        symbols = {f["symbol"] for f in _review_findings(tmp_path, "main...feature")}
+        assert "unrelated" not in symbols  # not on the feature side of the merge-base
+
+    def test_summarize_applies_normalization(self, tmp_path: Path) -> None:
+        _make_diverged_repo(tmp_path)
+        result = CliRunner().invoke(
+            main, ["summarize", "main...feature", "--repo", str(tmp_path), "--format", "json"]
+        )
+        assert result.exit_code == 0
+        ref_range = json.loads(result.output)["meta"]["ref_range"]
+        # normalized to "<merge-base-sha>..feature" — no three-dot leaks through
+        assert "..." not in ref_range
+        assert ref_range.endswith("..feature")
