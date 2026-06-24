@@ -10,8 +10,25 @@ import logging
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
+from typing import NoReturn
 
 logger = logging.getLogger(__name__)
+
+
+def _raise_git_error(stderr: str, repo_path: str | Path, fallback: str) -> NoReturn:
+    """Log and raise a RuntimeError from a failed git invocation's stderr.
+
+    Special-cases the not-a-repository error; otherwise prefixes *fallback* with
+    git's first stderr line.
+    """
+    stderr = stderr.strip()
+    first_line = stderr.split("\n")[0] if stderr else "unknown error"
+    if "not a git repository" in stderr.lower():
+        msg = f"Not a git repository: {repo_path}"
+    else:
+        msg = f"{fallback}: {first_line}"
+    logger.error(msg)
+    raise RuntimeError(msg)
 
 
 def get_diff(
@@ -27,17 +44,13 @@ def get_diff(
         check=False,
     )
     if result.returncode != 0:
-        stderr = result.stderr.strip()
-        # Extract just the first meaningful line from git's stderr
-        first_line = stderr.split("\n")[0] if stderr else "unknown error"
-        if "not a git repository" in stderr.lower():
-            msg = f"Not a git repository: {repo_path}"
-        elif "unknown revision" in stderr.lower() or "bad revision" in stderr.lower():
+        lower = result.stderr.lower()
+        if "unknown revision" in lower or "bad revision" in lower:
+            first_line = result.stderr.strip().split("\n")[0]
             msg = f"Invalid ref range '{ref_range}': {first_line}"
-        else:
-            msg = f"git diff failed: {first_line}"
-        logger.error(msg)
-        raise RuntimeError(msg)
+            logger.error(msg)
+            raise RuntimeError(msg)
+        _raise_git_error(result.stderr, repo_path, "git diff failed")
     return result.stdout
 
 
@@ -51,14 +64,7 @@ def get_staged_diff(repo_path: str | Path = ".") -> str:
         check=False,
     )
     if result.returncode != 0:
-        stderr = result.stderr.strip()
-        first_line = stderr.split("\n")[0] if stderr else "unknown error"
-        if "not a git repository" in stderr.lower():
-            msg = f"Not a git repository: {repo_path}"
-        else:
-            msg = f"git diff --cached failed: {first_line}"
-        logger.error(msg)
-        raise RuntimeError(msg)
+        _raise_git_error(result.stderr, repo_path, "git diff --cached failed")
     return result.stdout
 
 

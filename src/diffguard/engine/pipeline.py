@@ -9,7 +9,12 @@ from typing import Callable
 from diffguard.engine._refs import split_ref_range
 from diffguard.engine._types import Symbol
 from diffguard.engine.classifier import classify_changes
-from diffguard.engine.matcher import MatchedSymbol, match_cross_file, match_symbols
+from diffguard.engine.matcher import (
+    MatchedSymbol,
+    UnmatchedByFile,
+    match_cross_file,
+    match_symbols,
+)
 from diffguard.engine.parser import parse_file
 from diffguard.engine.summarizer import build_summary, build_tiered_summary
 from diffguard.diff import FileDiff, parse_diff
@@ -55,8 +60,8 @@ def run_pipeline(
     warnings: list[str] = []
 
     # For cross-file move detection
-    unmatched_old: dict[str, list[Symbol]] = {}
-    unmatched_new: dict[str, list[Symbol]] = {}
+    unmatched_old: UnmatchedByFile = {}
+    unmatched_new: UnmatchedByFile = {}
 
     for fd in file_diffs:
         fc = _process_file(fd, ref_range, get_content, unmatched_old, unmatched_new, warnings)
@@ -103,8 +108,8 @@ def _process_file(
     fd: FileDiff,
     ref_range: str,
     get_content: FileContentProvider | None,
-    unmatched_old: dict[str, list[Symbol]],
-    unmatched_new: dict[str, list[Symbol]],
+    unmatched_old: UnmatchedByFile,
+    unmatched_new: UnmatchedByFile,
     warnings: list[str],
 ) -> FileChange:
     """Process a single FileDiff into a FileChange."""

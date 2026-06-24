@@ -8,6 +8,9 @@ from diffguard.engine._types import Symbol
 
 SymbolKey = tuple[str, str, str | None]
 
+UnmatchedByFile = dict[str, list[Symbol]]
+"""File path -> symbols left unmatched within that file (cross-file move candidates)."""
+
 
 @dataclass(frozen=True)
 class MatchedSymbol:
@@ -95,8 +98,8 @@ def _match_duplicates(
 
 
 def match_cross_file(
-    unmatched_old: dict[str, list[Symbol]],
-    unmatched_new: dict[str, list[Symbol]],
+    unmatched_old: UnmatchedByFile,
+    unmatched_new: UnmatchedByFile,
 ) -> list[MatchedSymbol]:
     """Match unmatched symbols across files to detect moves."""
     results: list[MatchedSymbol] = []

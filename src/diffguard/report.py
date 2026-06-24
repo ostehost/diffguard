@@ -201,41 +201,58 @@ def _finding_json(f: Finding) -> dict[str, object]:
     return finding
 
 
+def _envelope(
+    ref_range: str,
+    findings: list[dict[str, object]],
+    warnings: list[str],
+    *,
+    files_analyzed: int,
+    symbols_changed: int,
+    parse_errors: int,
+    silence_reason: str | None,
+) -> str:
+    """Serialize the review JSON contract. The single source of the output shape,
+    so the populated and empty renderings cannot structurally diverge."""
+    result = {
+        "version": _VERSION,
+        "ref_range": ref_range,
+        "findings": findings,
+        "warnings": warnings,
+        "stats": {
+            "files_analyzed": files_analyzed,
+            "symbols_changed": symbols_changed,
+            "parse_errors": parse_errors,
+            "silence_reason": silence_reason,
+        },
+    }
+    return json.dumps(result, indent=2)
+
+
 def render_json(
     output: DiffGuardOutput,
     ref_range: str,
     findings: list[Finding],
 ) -> str:
     """Render findings as the structured JSON contract for the review command."""
-    symbols_changed = sum(len(fc.changes) for fc in output.files)
-    parse_errors = sum(1 for fc in output.files if fc.parse_error)
-    result = {
-        "version": _VERSION,
-        "ref_range": ref_range,
-        "findings": [_finding_json(f) for f in findings],
-        "warnings": list(output.meta.warnings),
-        "stats": {
-            "files_analyzed": len(output.files),
-            "symbols_changed": symbols_changed,
-            "parse_errors": parse_errors,
-            "silence_reason": None if findings else "no high-signal changes",
-        },
-    }
-    return json.dumps(result, indent=2)
+    return _envelope(
+        ref_range,
+        [_finding_json(f) for f in findings],
+        list(output.meta.warnings),
+        files_analyzed=len(output.files),
+        symbols_changed=sum(len(fc.changes) for fc in output.files),
+        parse_errors=sum(1 for fc in output.files if fc.parse_error),
+        silence_reason=None if findings else "no high-signal changes",
+    )
 
 
 def render_empty_json(ref_range: str, silence_reason: str) -> str:
     """Render the JSON emitted when there is nothing to analyze."""
-    result = {
-        "version": _VERSION,
-        "ref_range": ref_range,
-        "findings": [],
-        "warnings": [],
-        "stats": {
-            "files_analyzed": 0,
-            "symbols_changed": 0,
-            "parse_errors": 0,
-            "silence_reason": silence_reason,
-        },
-    }
-    return json.dumps(result, indent=2)
+    return _envelope(
+        ref_range,
+        [],
+        [],
+        files_analyzed=0,
+        symbols_changed=0,
+        parse_errors=0,
+        silence_reason=silence_reason,
+    )
