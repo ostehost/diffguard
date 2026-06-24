@@ -61,6 +61,7 @@ When there are no findings:
   "version": "0.2.0",
   "ref_range": "HEAD~1..HEAD",
   "findings": [],
+  "warnings": [],
   "stats": {
     "files_analyzed": 1,
     "symbols_changed": 0,

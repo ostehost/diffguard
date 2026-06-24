@@ -81,6 +81,7 @@ Returns a complete structural summary of the diff (~200-300 tokens). Always prod
       "review_hint": "Check all callers handle the new signature"
     }
   ],
+  "warnings": [],
   "stats": {
     "files_analyzed": 5,
     "symbols_changed": 8,
