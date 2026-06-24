@@ -8,7 +8,8 @@
 - `engine/summarizer.py` — summary generation ONLY. Takes classified changes, produces tiered text.
 - `schema.py` — Pydantic models. THE contract. Changes require migration notes in PR.
 - `git.py` — all git subprocess calls live here. Nothing else touches git.
-- `languages/{lang}/` — per-language tree-sitter config + queries.scm.
+- `languages/{lang}/` — per-language tree-sitter config: a `get_language()` parser
+  factory and an `extract_symbols(tree, source)` walker.
 
 ## Conventions
 - Type hints everywhere. `mypy --strict` must pass.

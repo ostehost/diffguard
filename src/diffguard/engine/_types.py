@@ -25,9 +25,7 @@ class ParseResult:
     """Result of parsing a source file."""
 
     symbols: list[Symbol] = field(default_factory=list)
-    language: str = ""
     parse_error: bool = False
-    error_message: str | None = None
 
 
 @dataclass(frozen=True)

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import pytest
@@ -12,7 +11,6 @@ from diffguard.schema import (
     DiffGuardOutput,
     Meta,
     SymbolChange,
-    export_json_schema,
 )
 
 
@@ -139,12 +137,6 @@ class TestMetaWarnings:
 
 
 class TestJsonSchema:
-    def test_export_json_schema(self) -> None:
-        schema_str = export_json_schema()
-        schema = json.loads(schema_str)
-        assert "properties" in schema
-        assert "meta" in schema["properties"]
-
     def test_model_json_schema(self) -> None:
         schema = DiffGuardOutput.model_json_schema()
         assert isinstance(schema, dict)

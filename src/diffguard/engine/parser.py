@@ -20,25 +20,13 @@ def parse_file(source: str, language: str) -> ParseResult:
     """
     try:
         parser = get_parser(language)
-    except ValueError as e:
-        return ParseResult(
-            symbols=[],
-            language=language,
-            parse_error=True,
-            error_message=str(e),
-        )
+    except ValueError:
+        return ParseResult(symbols=[], parse_error=True)
 
     source_bytes = source.encode("utf-8")
     tree: tree_sitter.Tree = parser.parse(source_bytes)
 
-    has_error = tree.root_node.has_error
-
     lang_module = get_language_module(language)
     symbols = lang_module.extract_symbols(tree, source_bytes)
 
-    return ParseResult(
-        symbols=symbols,
-        language=language,
-        parse_error=has_error,
-        error_message="Parse errors detected in source" if has_error else None,
-    )
+    return ParseResult(symbols=symbols, parse_error=tree.root_node.has_error)

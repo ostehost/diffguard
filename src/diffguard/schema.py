@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -94,8 +93,3 @@ class DiffGuardOutput(BaseModel):
     files: list[FileChange] = []
     summary: Summary = Summary()
     tiered: TieredSummary = TieredSummary()
-
-
-def export_json_schema() -> str:
-    """Export the JSON schema as a string."""
-    return json.dumps(DiffGuardOutput.model_json_schema(), indent=2)

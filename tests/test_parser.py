@@ -17,7 +17,6 @@ class Calculator:
 """
     result = parse_file(source, "python")
     assert not result.parse_error
-    assert result.language == "python"
     names = [s.name for s in result.symbols]
     assert "greet" in names
     assert "Calculator" in names
@@ -106,7 +105,6 @@ def foo() -> int:
 def test_parse_unsupported_language() -> None:
     result = parse_file("some code", "rust")
     assert result.parse_error
-    assert result.error_message is not None
 
 
 def test_parse_typescript() -> None:
