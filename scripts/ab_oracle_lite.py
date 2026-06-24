@@ -42,9 +42,14 @@ def _format_cmd(cmd: Sequence[str]) -> str:
     return " ".join(shlex.quote(part) for part in cmd)
 
 
-def run_cmd(cmd: Sequence[str], cwd: str | Path | None = None) -> str:
+def run_cmd(
+    cmd: Sequence[str],
+    cwd: str | Path | None = None,
+    *,
+    allowed_returncodes: tuple[int, ...] = (0,),
+) -> str:
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd, check=False)
-    if result.returncode != 0:
+    if result.returncode not in allowed_returncodes:
         stderr = result.stderr.strip()
         stdout = result.stdout.strip()
         detail = stderr or stdout or "no stderr/stdout captured"
@@ -62,8 +67,19 @@ def get_diff(repo_path: str | Path, ref_range: str) -> str:
 def get_diffguard_context(repo_path: str | Path, ref_range: str) -> str:
     diffguard = Path(__file__).parent.parent / ".venv" / "bin" / "diffguard"
     return run_cmd(
-        [str(diffguard), "context", ref_range, "--repo", str(repo_path)],
+        [
+            str(diffguard),
+            "review",
+            ref_range,
+            "--repo",
+            str(repo_path),
+            "--format",
+            "json",
+        ],
         cwd=repo_path,
+        # diffguard review exits 1 when high-signal findings are present; for
+        # the A/B oracle that JSON is the useful context, not a command failure.
+        allowed_returncodes=(0, 1),
     )
 
 

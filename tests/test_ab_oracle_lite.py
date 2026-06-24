@@ -82,4 +82,59 @@ def test_run_test_aborts_before_claude_when_diffguard_context_fails(
 
     assert len(calls) == 2
     assert calls[0] == ["git", "diff", "HEAD~1..HEAD"]
-    assert "context" in calls[1]
+    assert "review" in calls[1]
+    assert "--format" in calls[1]
+    assert "json" in calls[1]
+
+
+def test_get_diffguard_context_accepts_review_findings_exit_one(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    oracle = _load_ab_oracle()
+    calls: list[Sequence[str]] = []
+
+    def fake_run(
+        cmd: Sequence[str], *args: object, **kwargs: object
+    ) -> subprocess.CompletedProcess[Sequence[str]]:
+        calls.append(cmd)
+        return _completed(cmd, 1, stdout='{"findings": []}\n')
+
+    monkeypatch.setattr(oracle.subprocess, "run", fake_run)
+
+    assert oracle.get_diffguard_context(tmp_path, "HEAD~1..HEAD") == '{"findings": []}\n'
+    assert calls == [
+        [
+            str(Path(__file__).parents[1] / ".venv" / "bin" / "diffguard"),
+            "review",
+            "HEAD~1..HEAD",
+            "--repo",
+            str(tmp_path),
+            "--format",
+            "json",
+        ]
+    ]
+
+
+def test_get_diffguard_context_uses_live_review_cli(tmp_path: Path) -> None:
+    oracle = _load_ab_oracle()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.email", "t@example.test"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "T"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "core.hooksPath", ""], cwd=repo, check=True)
+    (repo / "lib.py").write_text("def helper(value):\n    return value\n")
+    (repo / "app.py").write_text("from lib import helper\nprint(helper(1))\n")
+    subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
+    subprocess.run(["git", "commit", "-m", "test: init"], cwd=repo, capture_output=True, check=True)
+    (repo / "lib.py").write_text("def helper(value, other):\n    return value + other\n")
+    subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "test: change signature"], cwd=repo, capture_output=True, check=True
+    )
+
+    context = oracle.get_diffguard_context(repo, "HEAD~1..HEAD")
+
+    assert '"ref_range": "HEAD~1..HEAD"' in context
+    assert "helper" in context
