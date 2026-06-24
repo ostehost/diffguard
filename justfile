@@ -97,6 +97,10 @@ docs-build:
 docs-serve:
     uv run mkdocs serve
 
+# Rebuild the concatenated docs context file (docs/llms-ctx.txt) for AI agents
+docs-llms:
+    bash scripts/build-llms-ctx.sh
+
 clean:
     rm -rf .pytest_cache .ruff_cache .mypy_cache build dist site htmlcov .coverage .clawpatch
 
