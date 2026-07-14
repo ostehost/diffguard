@@ -5,11 +5,13 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from diffguard.schema import (
     FileChange,
     DiffGuardOutput,
     Meta,
+    ReviewEnvelope,
     SymbolChange,
 )
 
@@ -30,7 +32,7 @@ def _minimal_output(**overrides: Any) -> dict[str, Any]:
 class TestDefaults:
     def test_minimal_output(self) -> None:
         out = DiffGuardOutput.model_validate(_minimal_output())
-        assert out.schema_version == "1.1"
+        assert out.schema_version == "2.0"
         assert out.files == []
         assert out.summary.change_types == {}
         assert out.summary.breaking_changes == []
@@ -41,6 +43,11 @@ class TestDefaults:
         # schema_version is on DiffGuardOutput, not Meta
         assert meta.warnings == []
         assert meta.timing_ms is None
+
+    @pytest.mark.parametrize("schema_version", ["1.1", "2.0.0", "3.0", ""])
+    def test_rejects_unknown_schema_version(self, schema_version: str) -> None:
+        with pytest.raises(ValidationError, match="schema_version"):
+            DiffGuardOutput.model_validate(_minimal_output(schema_version=schema_version))
 
 
 class TestFullOutput:
@@ -158,6 +165,153 @@ class TestRoundTrip:
         json_str = original.model_dump_json()
         restored = DiffGuardOutput.model_validate_json(json_str)
         assert original == restored
+
+
+class TestReviewEnvelope:
+    @staticmethod
+    def _minimal(**overrides: Any) -> dict[str, Any]:
+        data: dict[str, Any] = {
+            "mode": "committed",
+            "ref_range": "a..b",
+            "stats": {
+                "files_analyzed": 0,
+                "symbols_changed": 0,
+                "parse_errors": 0,
+                "reference_count": 0,
+            },
+        }
+        data.update(overrides)
+        return data
+
+    def test_populated(self) -> None:
+        envelope = ReviewEnvelope.model_validate(
+            {
+                "mode": "worktree",
+                "ref_range": "abc..:worktree",
+                "findings": [
+                    {
+                        "rule_id": "DG104",
+                        "category_id": "default_removed",
+                        "category": "DEFAULT REMOVED",
+                        "symbol": "f",
+                        "file": "lib.py",
+                        "breaking": True,
+                        "confidence": "high",
+                        "evidence": [{"kind": "syntax", "message": "default removed"}],
+                        "references": [
+                            {
+                                "file": "main.py",
+                                "line": 2,
+                                "symbol": "f",
+                                "kind": "call",
+                                "source": "f()",
+                            }
+                        ],
+                        "review_hint": "Update calls",
+                    }
+                ],
+                "stats": {
+                    "files_analyzed": 1,
+                    "symbols_changed": 1,
+                    "parse_errors": 0,
+                    "reference_count": 1,
+                },
+            }
+        )
+        assert envelope.findings[0].references[0].resolution == "unresolved"
+        assert envelope.findings[0].source_file is None
+
+    def test_move_source_file_is_optional_structured_evidence(self) -> None:
+        envelope = ReviewEnvelope.model_validate(
+            {
+                "mode": "committed",
+                "ref_range": "a..b",
+                "findings": [
+                    {
+                        "rule_id": "DG202",
+                        "category_id": "possible_symbol_move",
+                        "category": "POSSIBLE SYMBOL MOVE",
+                        "symbol": "helper",
+                        "file": "src/new_module.py",
+                        "source_file": "src/old_module.py",
+                        "confidence": "medium",
+                        "evidence": [{"kind": "syntax", "message": "cross-file candidate"}],
+                        "review_hint": "Confirm identity",
+                    }
+                ],
+                "stats": {
+                    "files_analyzed": 2,
+                    "symbols_changed": 1,
+                    "parse_errors": 0,
+                    "reference_count": 0,
+                },
+            }
+        )
+
+        finding = envelope.findings[0]
+        assert finding.file == "src/new_module.py"
+        assert finding.source_file == "src/old_module.py"
+
+    @pytest.mark.parametrize(
+        "data",
+        [
+            {
+                "mode": "committed",
+                "ref_range": "a..b",
+                "stats": {
+                    "files_analyzed": 0,
+                    "symbols_changed": 0,
+                    "parse_errors": 0,
+                    "reference_count": 0,
+                    "silence_reason": "no changes in diff",
+                },
+            },
+            {
+                "mode": "worktree",
+                "ref_range": "a..:worktree",
+                "warnings": [
+                    {"code": "parse_gap", "message": "bad.py: parse gap", "file": "bad.py"}
+                ],
+                "stats": {
+                    "files_analyzed": 1,
+                    "symbols_changed": 0,
+                    "parse_errors": 1,
+                    "reference_count": 0,
+                    "silence_reason": "no high-signal changes",
+                },
+            },
+            {
+                "status": "error",
+                "mode": "committed",
+                "ref_range": "bad",
+                "stats": {
+                    "files_analyzed": 0,
+                    "symbols_changed": 0,
+                    "parse_errors": 0,
+                    "reference_count": 0,
+                    "silence_reason": "tool error",
+                },
+                "error": {"code": "tool_error", "message": "invalid ref"},
+            },
+        ],
+    )
+    def test_empty_partial_and_error_paths(self, data: dict[str, Any]) -> None:
+        assert ReviewEnvelope.model_validate(data)
+
+    def test_rejects_unknown_version(self) -> None:
+        with pytest.raises(ValidationError, match="version"):
+            ReviewEnvelope.model_validate(self._minimal(version="1.0.0"))
+
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            {"status": "error"},
+            {"error": {"code": "tool_error", "message": "invalid ref"}},
+        ],
+    )
+    def test_rejects_inconsistent_status_and_error(self, overrides: dict[str, Any]) -> None:
+        with pytest.raises(ValidationError, match="if and only if"):
+            ReviewEnvelope.model_validate(self._minimal(**overrides))
 
 
 class TestFixtures:

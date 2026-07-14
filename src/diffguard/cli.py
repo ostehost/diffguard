@@ -4,20 +4,27 @@ from __future__ import annotations
 
 import logging
 import sys
+from typing import NoReturn
 
 import click
 
 from diffguard import __version__, hooks, report
-from diffguard.engine.findings import extract_findings, has_high_signal, scan_dependencies
+from diffguard.engine._refs import split_ref_range
+from diffguard.engine.deps import scan_references
+from diffguard.engine.findings import extract_findings
 from diffguard.engine.pipeline import FileContentProvider, run_pipeline
 from diffguard.git import (
     get_diff,
+    get_file_at_snapshot,
     get_file_at_ref,
     get_file_from_index,
     get_merge_base,
+    get_repository_root,
     get_staged_diff,
+    get_worktree_diff,
+    resolve_commit,
 )
-from diffguard.schema import DiffGuardOutput
+from diffguard.schema import DiffGuardOutput, ReviewMode
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +56,15 @@ def _make_staged_content_provider(repo_path: str) -> FileContentProvider:
     return _get
 
 
+def _make_worktree_content_provider(repo_path: str) -> FileContentProvider:
+    """Create a provider comparing a commit baseline to current worktree files."""
+
+    def _get(ref: str, file_path: str) -> str | None:
+        return get_file_at_snapshot(ref, file_path, repo_path=repo_path)
+
+    return _get
+
+
 def _normalize_ref_range(ref_range: str, repo: str) -> str:
     """Resolve git's three-dot range to a concrete ``<merge-base>..<new>`` range.
 
@@ -73,15 +89,20 @@ def _format_output(
     output: DiffGuardOutput,
     fmt: str,
     tier: str,
+    *,
+    include_tests: bool,
+    show_skipped: bool,
 ) -> str:
     """Format pipeline output according to --format flag."""
     if fmt == "json":
-        return output.model_dump_json(indent=2)
-    # Non-JSON: the format flag determines which tier to show
-    if fmt in ("oneliner", "short", "detailed"):
-        return str(getattr(output.tiered, fmt))
-    # Fallback to tier
-    return str(getattr(output.tiered, tier))
+        return report.render_summary_json(output)
+    selected_tier = fmt if fmt in ("oneliner", "short", "detailed") else tier
+    return report.render_summary_text(
+        output,
+        selected_tier,
+        include_tests=include_tests,
+        show_skipped=show_skipped,
+    )
 
 
 @click.group()
@@ -133,7 +154,7 @@ def main() -> None:
 @click.option(
     "--repo",
     default=".",
-    help="Repository path (default: current directory).",
+    help="Repository path or a directory within it (default: current directory).",
 )
 def summarize(
     ref_range: str | None,
@@ -148,7 +169,7 @@ def summarize(
     """Summarize git changes.
 
     REF_RANGE: Git ref range like HEAD~1..HEAD or main..feature.
-    Default: unstaged changes.
+    Default: staged, unstaged, and untracked worktree changes.
     """
     try:
         diff_text: str
@@ -159,18 +180,23 @@ def summarize(
             diff_text = sys.stdin.read()
             range_label = "stdin"
             content_provider = None
-        elif ref_range is not None:
-            ref_range = _normalize_ref_range(ref_range, repo)
-            diff_text = get_diff(ref_range, repo_path=repo)
-            range_label = ref_range
-            content_provider = _make_content_provider(repo)
         else:
-            diff_text = get_diff("HEAD", repo_path=repo)
-            range_label = "HEAD (unstaged)"
-            content_provider = _make_content_provider(repo)
+            repo = str(get_repository_root(repo))
+            if ref_range is not None:
+                ref_range = _normalize_ref_range(ref_range, repo)
+                diff_text = get_diff(ref_range, repo_path=repo)
+                range_label = ref_range
+                content_provider = _make_content_provider(repo)
+            else:
+                diff_text = get_worktree_diff("HEAD", repo_path=repo)
+                range_label = "HEAD..:worktree"
+                content_provider = _make_worktree_content_provider(repo)
 
         if not diff_text.strip():
-            click.echo("No changes found.", err=True)
+            if fmt == "json":
+                click.echo(report.render_empty_summary_json(range_label))
+            else:
+                click.echo("No changes found.", err=True)
             sys.exit(EXIT_NO_CHANGES)
 
         output = run_pipeline(
@@ -184,7 +210,13 @@ def summarize(
 
         has_parse_errors = any(fc.parse_error for fc in output.files)
 
-        text = _format_output(output, fmt, tier)
+        text = _format_output(
+            output,
+            fmt,
+            tier,
+            include_tests=include_tests,
+            show_skipped=show_skipped,
+        )
         click.echo(text)
 
         if has_parse_errors:
@@ -193,7 +225,7 @@ def summarize(
 
     except Exception as exc:
         logger.debug("CLI error", exc_info=True)
-        click.echo(f"Error: {exc}", err=True)
+        click.echo(f"Error: {report.terminal_safe_text(str(exc))}", err=True)
         sys.exit(EXIT_ERROR)
 
 
@@ -205,39 +237,65 @@ def _run_review(
     fmt: str,
     *,
     staged: bool = False,
+    worktree: bool = False,
+    against: str | None = None,
 ) -> None:
     """Core implementation behind the review command."""
+    mode: ReviewMode = "worktree" if worktree else "staged" if staged else "committed"
     try:
-        if staged:
+        repo = str(get_repository_root(repo))
+        if worktree:
+            requested_base = against or "HEAD"
+            if resolve_commit(requested_base, repo) is None:
+                raise RuntimeError(f"Invalid base ref '{requested_base}'")
+            base = get_merge_base(requested_base, "HEAD", repo)
+            if base is None:
+                raise RuntimeError(f"No merge base between '{requested_base}' and HEAD")
+            diff_text = get_worktree_diff(base, repo_path=repo)
+            ref_range = f"{base}..:worktree"
+            content_provider = _make_worktree_content_provider(repo)
+            reference_snapshot = ":worktree"
+        elif staged:
             diff_text = get_staged_diff(repo_path=repo)
             ref_range = "HEAD..:index"
             content_provider = _make_staged_content_provider(repo)
+            reference_snapshot = ":index"
         else:
             ref_range = _normalize_ref_range(ref_range, repo)
             diff_text = get_diff(ref_range, repo_path=repo)
             content_provider = _make_content_provider(repo)
+            _, reference_snapshot = split_ref_range(ref_range)
 
         if not diff_text.strip():
             if fmt == "json":
-                click.echo(report.render_empty_json(ref_range, "no changes in diff"))
+                click.echo(report.render_empty_json(ref_range, mode, "no changes in diff"))
             else:
                 click.echo("No changes found.", err=True)
             sys.exit(EXIT_SUCCESS)
 
         output = run_pipeline(diff_text, ref_range, content_provider)
 
-        # Staged review compares HEAD to the index; dependency scanning currently
-        # works on committed refs, so pre-commit mode analyzes only the staged diff.
-        dep_refs = scan_dependencies(output, ref_range, repo) if deps and not staged else None
+        findings = extract_findings(output)
+        names = list(dict.fromkeys(finding.change.name for finding in findings))
+        dep_refs = None
+        if deps and names:
+            scan = scan_references(repo, names, reference_snapshot)
+            dep_refs = scan.references
+            output.meta.warnings.extend(scan.warnings)
 
-        findings = extract_findings(output, dep_refs)
-        has_findings = has_high_signal(output)
+        if dep_refs is not None:
+            findings = extract_findings(output, dep_refs)
+        has_findings = bool(findings)
 
         if fmt == "json":
-            click.echo(report.render_json(output, ref_range, findings))
+            click.echo(report.render_json(output, ref_range, mode, findings))
             sys.exit(EXIT_FINDINGS if has_findings else EXIT_SUCCESS)
 
         # Text format
+        if output.meta.warnings:
+            click.echo("DiffGuard analysis warnings:", err=True)
+            for warning in output.meta.warnings:
+                click.echo(f"- {report.terminal_safe_text(warning)}", err=True)
         if not verbose and not has_findings:
             sys.exit(EXIT_SUCCESS)
 
@@ -251,13 +309,20 @@ def _run_review(
         raise
     except Exception as exc:
         logger.debug("CLI error", exc_info=True)
-        click.echo(f"Error: {exc}", err=True)
+        if fmt == "json":
+            click.echo(report.render_error_json(ref_range, mode, str(exc)))
+        else:
+            click.echo(f"Error: {report.terminal_safe_text(str(exc))}", err=True)
         sys.exit(EXIT_ERROR)
 
 
 @main.command()
 @click.argument("ref_range", required=False, default=None)
-@click.option("--repo", default=".", help="Repository path (default: current directory).")
+@click.option(
+    "--repo",
+    default=".",
+    help="Repository path or a directory within it (default: current directory).",
+)
 @click.option(
     "--deps/--no-deps", default=True, help="Enable dependency scanning (default: enabled)."
 )
@@ -280,6 +345,17 @@ def _run_review(
     default=False,
     help="Review staged/index changes for pre-commit use.",
 )
+@click.option(
+    "--worktree",
+    is_flag=True,
+    default=False,
+    help="Review staged, unstaged, added, and deleted worktree state.",
+)
+@click.option(
+    "--against",
+    default=None,
+    help="Base ref for --worktree; its merge base with HEAD is used (default: HEAD).",
+)
 def review(
     ref_range: str | None,
     repo: str,
@@ -287,6 +363,8 @@ def review(
     verbose: bool,
     fmt: str,
     staged: bool,
+    worktree: bool,
+    against: str | None,
 ) -> None:
     """Analyze git changes and surface high-signal findings for code review.
 
@@ -294,7 +372,8 @@ def review(
     Default: HEAD~1..HEAD (last commit).
 
     Detects signature changes, breaking changes, removed/moved symbols,
-    and finds callers that may be affected.
+    and reports syntactic imports, calls, and non-call references. Name matches
+    do not prove symbol ownership.
 
     \b
     Exit codes:
@@ -302,16 +381,42 @@ def review(
       1 — Findings present (read the output)
       2 — Error
     """
+
+    def _option_error(message: str, mode: ReviewMode) -> NoReturn:
+        if fmt == "json":
+            click.echo(report.render_error_json(ref_range or "", mode, message))
+        else:
+            click.echo(f"Error: {message}", err=True)
+        raise SystemExit(EXIT_ERROR)
+
     if staged and ref_range is not None:
-        click.echo("Error: --staged cannot be combined with a ref range", err=True)
-        sys.exit(EXIT_ERROR)
-    if ref_range is None:
+        _option_error("--staged cannot be combined with a ref range", "staged")
+    if worktree and ref_range is not None:
+        _option_error("--worktree cannot be combined with a ref range; use --against", "worktree")
+    if staged and worktree:
+        _option_error("--staged and --worktree are mutually exclusive", "worktree")
+    if against is not None and not worktree:
+        _option_error("--against requires --worktree", "worktree")
+    if ref_range is None and not staged and not worktree:
         ref_range = "HEAD~1..HEAD"
-    _run_review(ref_range, repo, deps, verbose, fmt, staged=staged)
+    _run_review(
+        ref_range or "HEAD",
+        repo,
+        deps,
+        verbose,
+        fmt,
+        staged=staged,
+        worktree=worktree,
+        against=against,
+    )
 
 
 @main.command("install-hook")
-@click.option("--repo", default=".", help="Repository path (default: current directory).")
+@click.option(
+    "--repo",
+    default=".",
+    help="Repository path or a directory within it (default: current directory).",
+)
 @click.option(
     "--hook-type",
     type=click.Choice(["pre-push", "pre-commit"]),
@@ -322,8 +427,9 @@ def review(
 def install_hook(repo: str, hook_type: str, force: bool) -> None:
     """Install a git hook that runs diffguard review before push/commit."""
     try:
+        repo = str(get_repository_root(repo))
         hook_path = hooks.install_hook(repo, hook_type, force=force)
-    except hooks.HookError as exc:
-        click.echo(f"Error: {exc}", err=True)
+    except (hooks.HookError, RuntimeError) as exc:
+        click.echo(f"Error: {report.terminal_safe_text(str(exc))}", err=True)
         sys.exit(EXIT_ERROR)
-    click.echo(f"Installed {hook_type} hook: {hook_path}")
+    click.echo(f"Installed {hook_type} hook: {report.terminal_safe_text(hook_path)}")

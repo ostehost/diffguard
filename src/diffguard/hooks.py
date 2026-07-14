@@ -10,22 +10,57 @@ from __future__ import annotations
 import os
 import stat
 
+from diffguard.git import get_hooks_dir
+
 PRE_PUSH_HOOK = """\
 #!/bin/sh
 # DiffGuard pre-push hook — runs diffguard review on pushed changes
 # Installed by: diffguard install-hook
 
 remote="$1"
-z40=0000000000000000000000000000000000000000
 
-while read local_ref local_sha remote_ref remote_sha; do
-    if [ "$remote_sha" = "$z40" ]; then
-        # New branch — compare against main/master
-        base=$(git rev-parse --verify refs/heads/main 2>/dev/null || git rev-parse --verify refs/heads/master 2>/dev/null || echo "")
-        if [ -z "$base" ]; then
-            continue
+# Git represents a missing object with an all-zero object ID whose width follows
+# the repository object format (40 hex digits for SHA-1, 64 for SHA-256). Keep
+# this format-agnostic so the hook also works with future Git object formats.
+is_zero_oid() {
+    case "$1" in
+        ''|*[!0]*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+    if is_zero_oid "$local_sha"; then
+        # Branch deletion — there is no local snapshot to review.
+        continue
+    fi
+
+    if is_zero_oid "$remote_sha"; then
+        # New branch — compare its commits against the default branch merge base.
+        base_ref=$(git symbolic-ref --quiet "refs/remotes/$remote/HEAD" 2>/dev/null || echo "")
+        if [ -z "$base_ref" ]; then
+            for candidate in "refs/remotes/$remote/main" "refs/remotes/$remote/master" refs/heads/main refs/heads/master; do
+                if git rev-parse --verify "$candidate^{commit}" >/dev/null 2>&1; then
+                    base_ref="$candidate"
+                    break
+                fi
+            done
         fi
-        range="$base..$local_sha"
+        if [ -z "$base_ref" ]; then
+            echo "DiffGuard could not determine a default branch for new-branch review." >&2
+            exit 2
+        fi
+        base=$(git rev-parse --verify "$base_ref^{commit}" 2>/dev/null || echo "")
+        if [ -z "$base" ]; then
+            echo "DiffGuard could not resolve default branch $base_ref." >&2
+            exit 2
+        fi
+        merge_base=$(git merge-base "$base" "$local_sha" 2>/dev/null || echo "")
+        if [ -z "$merge_base" ]; then
+            echo "DiffGuard could not find a merge base for the new branch." >&2
+            exit 2
+        fi
+        range="$merge_base..$local_sha"
     else
         range="$remote_sha..$local_sha"
     fi
@@ -53,8 +88,8 @@ PRE_COMMIT_HOOK = """\
 # DiffGuard pre-commit hook — runs diffguard review on staged changes
 # Installed by: diffguard install-hook
 
-echo "Running diffguard review --staged --no-deps ..."
-diffguard review --staged --no-deps
+echo "Running diffguard review --staged ..."
+diffguard review --staged
 status=$?
 if [ $status -eq 1 ]; then
     echo ""
@@ -81,16 +116,15 @@ class HookError(Exception):
 
 
 def install_hook(repo: str, hook_type: str, *, force: bool = False) -> str:
-    """Write the *hook_type* hook into *repo*'s ``.git/hooks`` and return its path.
+    """Write *hook_type* into Git's configured hooks directory and return its path.
 
     Raises :class:`HookError` if *repo* is not a git repository or a hook
     already exists and *force* is False.
     """
-    git_dir = os.path.join(repo, ".git")
-    if not os.path.isdir(git_dir):
-        raise HookError(f"{repo} is not a git repository")
-
-    hooks_dir = os.path.join(git_dir, "hooks")
+    try:
+        hooks_dir = str(get_hooks_dir(repo))
+    except (OSError, RuntimeError) as exc:
+        raise HookError(str(exc)) from exc
     os.makedirs(hooks_dir, exist_ok=True)
 
     hook_path = os.path.join(hooks_dir, hook_type)
