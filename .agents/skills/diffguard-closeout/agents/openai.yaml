@@ -1,0 +1,4 @@
+interface:
+  display_name: "DiffGuard Closeout"
+  short_description: "Verify worktree contract changes before finish"
+  default_prompt: "Use $diffguard-closeout to verify my worktree before finishing."

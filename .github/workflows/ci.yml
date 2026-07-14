@@ -1,31 +1,68 @@
 name: CI
 on: [push, pull_request]
+
+permissions: {}
+
 jobs:
   check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.14"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
-      - uses: extractions/setup-just@v2
-      - uses: astral-sh/setup-uv@v5
+          persist-credentials: false
+      - name: Refresh default branch for self-review
+        if: matrix.python-version == '3.14'
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+          GIT_CONFIG_COUNT: "2"
+          GIT_CONFIG_KEY_0: credential.helper
+          GIT_CONFIG_VALUE_0: ""
+          GIT_CONFIG_KEY_1: credential.helper
+          GIT_CONFIG_VALUE_1: "!f() { echo username=x-access-token; echo password=$GH_TOKEN; }; f"
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          git fetch --no-tags origin \
+            "+refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH"
+      - uses: extractions/setup-just@dd310ad5a97d8e7b41793f8ef055398d51ad4de6 # v2.0.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@0c5e2b8115b80b4c7c5ddf6ffdd634974642d182 # v5.4.1
+        with:
+          version: "0.11.19"
       - run: uv sync --locked --group dev --group docs
       - run: uv lock --check
       - run: just ci
       - name: DiffGuard self-review JSON gate
+        if: matrix.python-version == '3.14'
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          zero=0000000000000000000000000000000000000000
-
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            # Pull requests compare the PR base commit to the checked-out head.
-            range="${{ github.event.pull_request.base.sha }}..${{ github.sha }}"
-          elif [ "${{ github.event.before }}" != "$zero" ]; then
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            # Pull requests compare the PR merge base to the checked-out head.
+            range="$PR_BASE_SHA...$HEAD_SHA"
+          elif [ -n "$BEFORE_SHA" ] && [ -n "${BEFORE_SHA//0/}" ]; then
             # Pushes compare the previous pushed commit to the new commit.
-            range="${{ github.event.before }}..${{ github.sha }}"
+            range="$BEFORE_SHA..$HEAD_SHA"
           else
-            default_branch="${{ github.event.repository.default_branch }}"
-            git fetch origin "$default_branch" --depth=1
-            range="origin/$default_branch..${{ github.sha }}"
+            # A new branch can fork from an older default-branch commit. The
+            # pre-code refresh binds the complete default-branch ancestry to
+            # this remote-tracking ref without retaining checkout credentials.
+            range="origin/$DEFAULT_BRANCH...$HEAD_SHA"
           fi
 
           set +e
@@ -35,6 +72,26 @@ jobs:
 
           if ! uv run python -m json.tool diffguard-self-review.json > /dev/null; then
             echo "::error::DiffGuard self-review did not produce valid JSON"
+            cat diffguard-self-review.json
+            exit 1
+          fi
+
+          if ! uv run python -c '
+          from pathlib import Path
+          from diffguard.schema import ReviewEnvelope
+
+          envelope = ReviewEnvelope.model_validate_json(
+              Path("diffguard-self-review.json").read_text(encoding="utf-8")
+          )
+          complete = (
+              envelope.status == "ok"
+              and envelope.error is None
+              and not envelope.warnings
+              and envelope.stats.parse_errors == 0
+          )
+          raise SystemExit(0 if complete else 1)
+          '; then
+            echo "::error::DiffGuard self-review analysis was incomplete"
             cat diffguard-self-review.json
             exit 1
           fi

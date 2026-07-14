@@ -1,5 +1,5 @@
 name: "DiffGuard PR Review"
-description: "Catches structural breaks that pass code review — runs diffguard review on PRs and posts findings as a comment."
+description: "Catches structural breaks that pass code review — runs diffguard review on PRs and can post findings as a comment."
 branding:
   icon: "search"
   color: "orange"
@@ -16,12 +16,18 @@ inputs:
     default: "text"
   post-comment:
     description: "Post findings as a PR comment"
-    default: "true"
+    default: "false"
 
 outputs:
   findings:
-    description: "Raw diffguard review output"
+    description: "DiffGuard review output, bounded to 250,000 UTF-8 bytes"
     value: ${{ steps.review.outputs.findings }}
+  findings-truncated:
+    description: "Whether findings exceeded the Action output bound; full output remains in the step log"
+    value: ${{ steps.review.outputs.findings-truncated }}
+  analysis-incomplete:
+    description: "Whether warnings, parse gaps, or invalid structured output make the analysis incomplete"
+    value: ${{ steps.review.outputs.analysis-incomplete }}
   exit-code:
     description: "diffguard exit code (0=no findings, 1=findings, 2=error)"
     value: ${{ steps.review.outputs.exit-code }}
@@ -30,78 +36,497 @@ runs:
   using: "composite"
   steps:
     - name: Set up Python
-      uses: actions/setup-python@v5
+      # setup-python v6 uses Node 24. Self-hosted consumers require GitHub Actions
+      # Runner v2.327.1+; GitHub-hosted runners are managed by GitHub.
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
       with:
         python-version: ${{ inputs.python-version }}
 
     - name: Install DiffGuard
+      id: runtime
       shell: bash
-      run: pip install diffguard
+      env:
+        DIFFGUARD_ACTION_PATH: ${{ github.action_path }}
+        DIFFGUARD_BUILD_CONSTRAINTS: ${{ github.action_path }}/action-build-constraints.txt
+        DIFFGUARD_RUNTIME_CONSTRAINTS: ${{ github.action_path }}/action-runtime-constraints.txt
+      # github.action_path is the checked-out Action implementation selected by
+      # the caller. Exact build and runtime constraints prevent the selected
+      # source from resolving different dependency versions per run.
+      # A unique venv avoids modifying setup-python's persistent interpreter on
+      # self-hosted runners and prevents concurrent Action runs from racing over
+      # one site-packages directory.
+      run: |
+        RUNTIME_DIR=$(python -I -c '
+        import os
+        import tempfile
+
+        print(tempfile.mkdtemp(prefix="diffguard-runtime-", dir=os.environ.get("RUNNER_TEMP")))
+        ')
+        if [ "${RUNNER_OS:-}" = "Windows" ]; then
+          # `shell: bash` uses Git Bash on Windows runners. Convert the native
+          # tempfile path once so bash can invoke and later remove the venv.
+          RUNTIME_DIR=$(cygpath -u "$RUNTIME_DIR")
+          RUNTIME_PYTHON="$RUNTIME_DIR/Scripts/python.exe"
+        else
+          RUNTIME_PYTHON="$RUNTIME_DIR/bin/python"
+        fi
+        printf 'runtime-dir=%s\n' "$RUNTIME_DIR" >> "$GITHUB_OUTPUT"
+        printf 'python-path=%s\n' "$RUNTIME_PYTHON" >> "$GITHUB_OUTPUT"
+
+        python -I -m venv "$RUNTIME_DIR"
+        "$RUNTIME_PYTHON" -I -m pip install \
+          --constraint "$DIFFGUARD_BUILD_CONSTRAINTS" \
+          "hatchling==1.31.0"
+        "$RUNTIME_PYTHON" -I -m pip install \
+          --no-build-isolation \
+          --constraint "$DIFFGUARD_RUNTIME_CONSTRAINTS" \
+          "$DIFFGUARD_ACTION_PATH"
 
     - name: Run DiffGuard review
       id: review
       shell: bash
+      env:
+        DIFFGUARD_REF_RANGE: ${{ inputs.ref-range }}
+        DIFFGUARD_FORMAT: ${{ inputs.format }}
+        DIFFGUARD_POST_COMMENT: ${{ inputs.post-comment }}
+        DIFFGUARD_EVENT_NAME: ${{ github.event_name }}
+        DIFFGUARD_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        DIFFGUARD_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        DIFFGUARD_PYTHON: ${{ steps.runtime.outputs.python-path }}
       run: |
-        REF_RANGE="${{ inputs.ref-range }}"
+        REF_RANGE="$DIFFGUARD_REF_RANGE"
+        if [ -n "$REF_RANGE" ] && [ "$DIFFGUARD_POST_COMMENT" = "true" ] && [ "$DIFFGUARD_EVENT_NAME" = "pull_request" ]; then
+          printf 'exit-code=2\n' >> "$GITHUB_OUTPUT"
+          echo "::error::custom ref-range is not allowed when post-comment=true on a pull_request; omit ref-range so comment identity matches the reviewed base/head"
+          exit 2
+        fi
         if [ -z "$REF_RANGE" ]; then
-          REF_RANGE="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+          if [ -z "$DIFFGUARD_BASE_SHA" ] || [ -z "$DIFFGUARD_HEAD_SHA" ]; then
+            printf 'exit-code=2\n' >> "$GITHUB_OUTPUT"
+            echo "::error::ref-range is required outside a pull_request event"
+            exit 2
+          fi
+          REF_RANGE="${DIFFGUARD_BASE_SHA}...${DIFFGUARD_HEAD_SHA}"
         fi
 
+        # A quoted value is still parsed as a Click option when it begins with
+        # "-". Reject option-like ranges so inputs such as "--help" or
+        # "--staged" cannot turn a requested comparison into a false-clean run.
+        case "$REF_RANGE" in
+          -*)
+            printf 'exit-code=2\n' >> "$GITHUB_OUTPUT"
+            echo "::error::ref-range must not begin with '-'"
+            exit 2
+            ;;
+        esac
+
+        TEMP_ROOT="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
+        if [ "${RUNNER_OS:-}" = "Windows" ]; then
+          # GitHub exposes RUNNER_TEMP as a native Windows path, while this
+          # step runs in Git Bash. Use the shell representation for mktemp and
+          # file operations; emit mixed/native paths below for the Node step.
+          TEMP_ROOT=$(cygpath -u "$TEMP_ROOT")
+        fi
+        STDERR_FILE=$(mktemp "$TEMP_ROOT/diffguard-stderr.XXXXXX")
+        trap 'rm -f "$STDERR_FILE"' EXIT
+        FINDINGS_FILE=$(mktemp "$TEMP_ROOT/diffguard-findings.XXXXXX")
+        COMMENT_FILE=$(mktemp "$TEMP_ROOT/diffguard-comment.XXXXXX")
+        FINDINGS_OUTPUT_FILE="$FINDINGS_FILE"
+        COMMENT_OUTPUT_FILE="$COMMENT_FILE"
+        if [ "${RUNNER_OS:-}" = "Windows" ]; then
+          FINDINGS_OUTPUT_FILE=$(cygpath -m "$FINDINGS_FILE")
+          COMMENT_OUTPUT_FILE=$(cygpath -m "$COMMENT_FILE")
+        fi
+        printf 'findings-file=%s\n' "$FINDINGS_OUTPUT_FILE" >> "$GITHUB_OUTPUT"
+        printf 'comment-file=%s\n' "$COMMENT_OUTPUT_FILE" >> "$GITHUB_OUTPUT"
         set +e
-        OUTPUT=$(diffguard review "$REF_RANGE" --format "${{ inputs.format }}" 2>&1)
+        OUTPUT=$("$DIFFGUARD_PYTHON" -I -c 'from diffguard.cli import main; main()' review "$REF_RANGE" --format "$DIFFGUARD_FORMAT" 2>"$STDERR_FILE")
         EXIT_CODE=$?
         set -e
 
-        echo "exit-code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+        # Pass the complete findings to the comment step by file. A single
+        # 250 KB environment variable exceeds Linux's per-string exec limit on
+        # common runners before the JavaScript Action can start.
+        printf '%s' "$OUTPUT" > "$FINDINGS_FILE"
+        printf '%s' "$OUTPUT" > "$COMMENT_FILE"
 
-        # Write findings to output (handle multiline)
+        printf 'exit-code=%s\n' "$EXIT_CODE" >> "$GITHUB_OUTPUT"
+
+        # Exit 0 means that DiffGuard found no high-signal contract changes; it
+        # does not mean every file was analyzed. Preserve that distinction as a
+        # first-class output so warnings and parse gaps cannot become a false
+        # clean result. JSON warnings are read structurally. In text mode the
+        # CLI's exact warning header identifies warning output on stderr.
+        ANALYSIS_INCOMPLETE=false
+        if [ "$EXIT_CODE" -eq 0 ] || [ "$EXIT_CODE" -eq 1 ]; then
+          if [ "$DIFFGUARD_FORMAT" = "json" ]; then
+            set +e
+            "$DIFFGUARD_PYTHON" -I -c '
+        import sys
+
+        try:
+            import json
+
+            from diffguard.schema import ReviewEnvelope
+
+            with open(sys.argv[1], encoding="utf-8") as stream:
+                payload = ReviewEnvelope.model_validate(json.load(stream))
+        except Exception:
+            raise SystemExit(2) from None
+        incomplete = payload.status != "ok" or bool(payload.warnings) or payload.stats.parse_errors > 0
+        raise SystemExit(0 if incomplete else 1)
+        ' "$FINDINGS_FILE"
+            ANALYSIS_STATUS=$?
+            set -e
+            if [ "$ANALYSIS_STATUS" -ne 1 ]; then
+              # Invalid JSON on an otherwise successful run is itself an
+              # analysis gap: consumers cannot verify the structured result.
+              ANALYSIS_INCOMPLETE=true
+            fi
+          else
+            # Read warning output as binary lines so an exact CLI header is
+            # recognized with either LF or the CRLF emitted by native Windows
+            # streams. A detector error is itself an analysis gap rather than
+            # a reason to expose a false-clean result.
+            set +e
+            "$DIFFGUARD_PYTHON" -I -c '
+        import sys
+
+        try:
+            with open(sys.argv[1], "rb") as stream:
+                lines = stream.read().splitlines()
+        except Exception:
+            raise SystemExit(2) from None
+        header = b"DiffGuard analysis warnings:"
+        raise SystemExit(0 if header in lines else 1)
+        ' "$STDERR_FILE"
+            ANALYSIS_STATUS=$?
+            set -e
+            if [ "$ANALYSIS_STATUS" -ne 1 ]; then
+              ANALYSIS_INCOMPLETE=true
+              {
+                cat "$STDERR_FILE"
+                if [ -n "$OUTPUT" ]; then
+                  printf '\n%s' "$OUTPUT"
+                fi
+              } > "$COMMENT_FILE"
+            fi
+          fi
+        fi
+        printf 'analysis-incomplete=%s\n' "$ANALYSIS_INCOMPLETE" >> "$GITHUB_OUTPUT"
+
+        # Composite Action outputs count toward GitHub's 1 MB per-job limit,
+        # approximated in UTF-16. Keep this UTF-8 payload conservative enough
+        # to leave room for other job outputs. The complete CLI output is still
+        # emitted in the protected step log whenever truncation is necessary.
+        OUTPUT_LIMIT_BYTES=250000
+        OUTPUT_BYTES=$(printf '%s' "$OUTPUT" | LC_ALL=C wc -c | tr -d '[:space:]')
+        FINDINGS_TRUNCATED=false
+        BOUNDED_OUTPUT="$OUTPUT"
+        if [ "$OUTPUT_BYTES" -gt "$OUTPUT_LIMIT_BYTES" ]; then
+          BOUNDED_OUTPUT=$(printf '%s' "$OUTPUT" | "$DIFFGUARD_PYTHON" -I -c '
+        import sys
+
+        limit = int(sys.argv[1])
+        notice = b"\n[DiffGuard findings output truncated; full output is in the step log.]"
+        data = sys.stdin.buffer.read()
+        prefix = data[: max(0, limit - len(notice))].decode("utf-8", errors="ignore")
+        sys.stdout.buffer.write(prefix.encode("utf-8") + notice)
+        ' "$OUTPUT_LIMIT_BYTES")
+          FINDINGS_TRUNCATED=true
+        fi
+        printf 'findings-truncated=%s\n' "$FINDINGS_TRUNCATED" >> "$GITHUB_OUTPUT"
+
+        # Use a per-run delimiter and ensure source text cannot terminate the
+        # multiline output early.
+        DELIMITER="DIFFGUARD_$("$DIFFGUARD_PYTHON" -I -c 'import uuid; print(uuid.uuid4().hex)')"
+        while printf '%s\n' "$BOUNDED_OUTPUT" | grep -Fxq "$DELIMITER"; do
+          DELIMITER="DIFFGUARD_$("$DIFFGUARD_PYTHON" -I -c 'import uuid; print(uuid.uuid4().hex)')"
+        done
         {
-          echo "findings<<DIFFGUARD_EOF"
-          echo "$OUTPUT"
-          echo "DIFFGUARD_EOF"
+          printf 'findings<<%s\n' "$DELIMITER"
+          printf '%s\n' "$BOUNDED_OUTPUT"
+          printf '%s\n' "$DELIMITER"
         } >> "$GITHUB_OUTPUT"
 
-        if [ $EXIT_CODE -eq 2 ]; then
-          echo "::error::DiffGuard encountered an error"
-          echo "$OUTPUT" >&2
-          exit 1
+        # Disable workflow-command parsing while relaying source-derived CLI
+        # output. This prevents reviewed text from being interpreted as an
+        # Actions command in the runner log.
+        LOG_TOKEN="DIFFGUARD_LOG_$("$DIFFGUARD_PYTHON" -I -c 'import uuid; print(uuid.uuid4().hex)')"
+        printf '::stop-commands::%s\n' "$LOG_TOKEN"
+        if [ -s "$STDERR_FILE" ]; then
+          # Keep source-derived stderr on the same runner stream as the stop
+          # token. Runner stdout/stderr readers are asynchronous, so preserving
+          # shell write order across the two streams would not be sufficient.
+          cat "$STDERR_FILE"
+        fi
+        if [ "$EXIT_CODE" -eq 1 ] || [ "$ANALYSIS_INCOMPLETE" = true ] || [ "$FINDINGS_TRUNCATED" = true ] || { [ "$EXIT_CODE" -ne 0 ] && [ -n "$OUTPUT" ]; }; then
+          printf '%s\n' "$OUTPUT"
+        fi
+        # Neither captured stream is required to end with a newline. Emit an
+        # explicit boundary so the resume token is always a standalone command.
+        printf '\n'
+        printf '::%s::\n' "$LOG_TOKEN"
+
+        if [ "$ANALYSIS_INCOMPLETE" = true ]; then
+          echo "::warning::DiffGuard analysis is incomplete; inspect warnings and structured output"
         fi
 
-        if [ $EXIT_CODE -eq 1 ]; then
-          echo "$OUTPUT"
+        if [ $EXIT_CODE -ne 0 ] && [ $EXIT_CODE -ne 1 ]; then
+          echo "::error::DiffGuard encountered an error (exit $EXIT_CODE)"
+          exit "$EXIT_CODE"
         fi
 
     - name: Post PR comment
-      if: inputs.post-comment == 'true' && steps.review.outputs.exit-code == '1' && github.event_name == 'pull_request'
-      uses: actions/github-script@v7
+      if: inputs.post-comment == 'true' && github.event_name == 'pull_request' && (steps.review.outputs.exit-code == '0' || steps.review.outputs.exit-code == '1')
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
       env:
-        DIFFGUARD_FINDINGS: ${{ steps.review.outputs.findings }}
+        DIFFGUARD_COMMENT_FILE: ${{ steps.review.outputs.comment-file }}
+        DIFFGUARD_EXIT_CODE: ${{ steps.review.outputs.exit-code }}
+        DIFFGUARD_ANALYSIS_INCOMPLETE: ${{ steps.review.outputs.analysis-incomplete }}
       with:
         script: |
-          const findings = process.env.DIFFGUARD_FINDINGS;
-          const body = `<!-- diffguard-review -->\n### 🔍 DiffGuard Review\n\n\`\`\`\n${findings}\n\`\`\`\n\n<sub>Posted by [DiffGuard](https://github.com/ostehost/diffguard) · structural change detection</sub>`;
+          const exitCode = process.env.DIFFGUARD_EXIT_CODE;
+          const analysisIncomplete = process.env.DIFFGUARD_ANALYSIS_INCOMPLETE === 'true';
 
-          // Find and update existing comment, or create new one
-          const { data: comments } = await github.rest.issues.listComments({
+          // Never let an older run mutate the comment for a newer PR state.
+          // Compare both ends of the analyzed range because the base branch can
+          // advance while the PR head remains unchanged.
+          const eventPullRequest = context.payload.pull_request;
+          if (!eventPullRequest) {
+            core.warning('DiffGuard comment skipped: pull request payload is unavailable.');
+            return;
+          }
+          const analyzedBase = eventPullRequest.base?.sha;
+          const analyzedHead = eventPullRequest.head?.sha;
+          if (!analyzedBase || !analyzedHead) {
+            core.warning('DiffGuard comment skipped: analyzed pull request SHAs are unavailable.');
+            return;
+          }
+
+          // Use a v2 marker that cannot match the exact legacy marker consumed
+          // by an already-running older Action. Bind mutation identity to the
+          // exact analyzed state so one base/head pair can never adopt, update,
+          // or delete a comment produced for a later pair.
+          const stateMarker = `<!-- diffguard-review:v2 base=${analyzedBase} head=${analyzedHead} -->`;
+          const commentIdentity = `${stateMarker}\n`;
+
+          async function pullRequestStillCurrent() {
+            const { data: currentPullRequest } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            if (
+              currentPullRequest.base.sha !== analyzedBase ||
+              currentPullRequest.head.sha !== analyzedHead
+            ) {
+              core.notice('DiffGuard comment skipped because the pull request advanced during review.');
+              return false;
+            }
+            return true;
+          }
+
+          const fs = require('fs');
+          const findingsPath = process.env.DIFFGUARD_COMMENT_FILE;
+          const findings = findingsPath ? fs.readFileSync(findingsPath, 'utf8') : '';
+
+          // The triggering actor is not necessarily the identity behind
+          // GITHUB_TOKEN. Resolve the token viewer when possible and retain the
+          // standard Actions bot as a fallback for existing comments.
+          const commentAuthors = new Set(['github-actions[bot]']);
+          try {
+            const { viewer } = await github.graphql('query { viewer { login } }');
+            if (viewer?.login) {
+              commentAuthors.add(viewer.login);
+            }
+          } catch (error) {
+            core.debug(`Could not resolve GITHUB_TOKEN viewer: ${error.message}`);
+          }
+
+          const comments = await github.paginate(github.rest.issues.listComments, {
             owner: context.repo.owner,
             repo: context.repo.repo,
             issue_number: context.issue.number,
+            per_page: 100,
           });
+          const existing = comments.filter(comment =>
+            comment.body?.startsWith(commentIdentity) && commentAuthors.has(comment.user?.login),
+          );
 
-          const existing = comments.find(c => c.body.includes('<!-- diffguard-review -->'));
+          async function tolerateMissingComment(operation, commentId, verb) {
+            try {
+              await operation();
+              return true;
+            } catch (error) {
+              if (error?.status === 404) {
+                core.debug(`DiffGuard comment ${commentId} disappeared before ${verb}; continuing.`);
+                return false;
+              }
+              throw error;
+            }
+          }
 
-          if (existing) {
-            await github.rest.issues.updateComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              comment_id: existing.id,
-              body,
-            });
-          } else {
-            await github.rest.issues.createComment({
+          async function deleteComment(commentId) {
+            await tolerateMissingComment(
+              () => github.rest.issues.deleteComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: commentId,
+              }),
+              commentId,
+              'deletion',
+            );
+          }
+
+          // The exact-state list is an immutable pre-check snapshot. A comment
+          // for another state/version, or one created later, can never become a
+          // target of this run. Historical comments are intentionally retained
+          // because GitHub does not document compare-and-swap for comment writes.
+          if (exitCode === '0' && !analysisIncomplete) {
+            if (!(await pullRequestStillCurrent())) {
+              return;
+            }
+            for (const comment of existing) {
+              await deleteComment(comment.id);
+            }
+            return;
+          }
+
+          const heading = analysisIncomplete
+            ? '### ⚠️ DiffGuard Review — Incomplete Analysis'
+            : '### 🔍 DiffGuard Review';
+          const explanation = analysisIncomplete
+            ? '\n\nDiffGuard reported analysis warnings or parse gaps, or its structured result could not be validated. Do not treat this run as a clean review; inspect the details and complete the missing analysis.'
+            : '';
+          const prefix = `${commentIdentity}${heading}${explanation}\n\n<pre>`;
+          const suffix = `</pre>\n\n<sub>Analyzed <code>${analyzedBase}...${analyzedHead}</code> · Posted by [DiffGuard](https://github.com/ostehost/diffguard) · structural change detection</sub>`;
+          const truncation = '\n… DiffGuard output truncated to fit the PR comment limit …';
+          const maxCommentBytes = 60_000;
+
+          function unsafeDisplayEscape(character) {
+            if (character === '\t' || character === '\n') {
+              return null;
+            }
+            const codePoint = character.codePointAt(0);
+            // Node 24 Unicode properties cover C0/C1, bidi/zero-width format
+            // controls, surrogates, private-use/tag characters, and Unicode
+            // line/paragraph separators without maintaining a partial list.
+            if (!/[\p{C}\p{Zl}\p{Zp}]/u.test(character)) {
+              return null;
+            }
+            const hex = codePoint.toString(16);
+            if (codePoint <= 0xff) {
+              return `\\x${hex.padStart(2, '0')}`;
+            }
+            if (codePoint <= 0xffff) {
+              return `\\u${hex.padStart(4, '0')}`;
+            }
+            return `\\U${hex.padStart(8, '0')}`;
+          }
+
+          function escapeAndTruncate(input, maxBytes) {
+            const replacements = { '&': '&amp;', '<': '&lt;', '>': '&gt;' };
+            let text = '';
+            let bytes = 0;
+            for (const character of input) {
+              const escaped = unsafeDisplayEscape(character) ?? replacements[character] ?? character;
+              const size = Buffer.byteLength(escaped, 'utf8');
+              if (bytes + size > maxBytes) {
+                return { text, truncated: true };
+              }
+              text += escaped;
+              bytes += size;
+            }
+            return { text, truncated: false };
+          }
+
+          const wrapperBytes = Buffer.byteLength(prefix + suffix, 'utf8');
+          const truncationBytes = Buffer.byteLength(truncation, 'utf8');
+          const rendered = escapeAndTruncate(
+            findings || 'Analysis was incomplete, but no warning details were captured.',
+            maxCommentBytes - wrapperBytes - truncationBytes,
+          );
+          const body = prefix + rendered.text + (rendered.truncated ? truncation : '') + suffix;
+
+          if (!(await pullRequestStillCurrent())) {
+            return;
+          }
+
+          const [primary] = existing;
+          let retainedCommentId;
+          if (primary) {
+            const updated = await tolerateMissingComment(
+              () => github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: primary.id,
+                body,
+              }),
+              primary.id,
+              'update',
+            );
+            if (updated) {
+              retainedCommentId = primary.id;
+            }
+          }
+          if (retainedCommentId == null) {
+            const { data: createdComment } = await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
               body,
             });
+            if (createdComment?.id == null) {
+              throw new Error('DiffGuard comment creation returned no comment id.');
+            }
+            retainedCommentId = createdComment.id;
           }
+
+          // A finding can race a synchronize event after its first freshness
+          // check. Recheck after the write. If stale, roll back only IDs bound
+          // to this run's own state. Other-state/version and legacy IDs were
+          // never admitted to the exact-state snapshot and remain untouched.
+          const ownStateIds = new Set(existing.map(comment => comment.id));
+          ownStateIds.add(retainedCommentId);
+          if (!(await pullRequestStillCurrent())) {
+            for (const commentId of ownStateIds) {
+              await deleteComment(commentId);
+            }
+            return;
+          }
+
+          // Still current: remove only same-state duplicates captured before the
+          // first check. Cross-state, future-version, and legacy comments are
+          // never update/delete candidates.
+          for (const duplicate of existing.slice(1)) {
+            await deleteComment(duplicate.id);
+          }
+
+    - name: Clean up DiffGuard runtime and findings
+      if: always()
+      shell: bash
+      env:
+        DIFFGUARD_RUNTIME_DIR: ${{ steps.runtime.outputs.runtime-dir }}
+        DIFFGUARD_FINDINGS_FILE: ${{ steps.review.outputs.findings-file }}
+        DIFFGUARD_COMMENT_FILE: ${{ steps.review.outputs.comment-file }}
+      run: |
+        FINDINGS_FILE="$DIFFGUARD_FINDINGS_FILE"
+        COMMENT_FILE="$DIFFGUARD_COMMENT_FILE"
+        if [ "${RUNNER_OS:-}" = "Windows" ]; then
+          if [ -n "$FINDINGS_FILE" ]; then
+            FINDINGS_FILE=$(cygpath -u "$FINDINGS_FILE")
+          fi
+          if [ -n "$COMMENT_FILE" ]; then
+            COMMENT_FILE=$(cygpath -u "$COMMENT_FILE")
+          fi
+        fi
+        if [ -n "$FINDINGS_FILE" ]; then
+          rm -f -- "$FINDINGS_FILE"
+        fi
+        if [ -n "$COMMENT_FILE" ]; then
+          rm -f -- "$COMMENT_FILE"
+        fi
+        if [ -n "$DIFFGUARD_RUNTIME_DIR" ]; then
+          rm -rf -- "$DIFFGUARD_RUNTIME_DIR"
+        fi

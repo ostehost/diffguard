@@ -101,6 +101,10 @@ docs-serve:
 docs-llms:
     bash scripts/build-llms-ctx.sh
 
+# Run the local labeled contract-rule corpus and fail on finding or parse-gap drift.
+validate-corpus:
+    uv run python scripts/validate_corpus.py --check
+
 clean:
     rm -rf .pytest_cache .ruff_cache .mypy_cache build dist site htmlcov .coverage .clawpatch
 

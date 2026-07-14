@@ -15,3 +15,5 @@ venv/
 site/
 .clawpatch/
 STRESS_TEST_RESULTS.md
+
+node_modules/
