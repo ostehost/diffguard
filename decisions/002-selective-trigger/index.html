@@ -263,7 +263,7 @@
   
     
   
-  Real-World Catches
+  Historical Scenarios
 
       </a>
     </li>
@@ -313,6 +313,26 @@
   
   
   
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../agents-md-snippet/" class="md-tabs__link">
+          
+  
+  
+  Agent Snippets
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
     <li class="md-tabs__item">
       <a href="../../schema/" class="md-tabs__link">
         
@@ -340,6 +360,25 @@
     
   
   Architecture
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../validation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Validation
 
       </a>
     </li>
@@ -497,7 +536,7 @@
   <span class="md-ellipsis">
     
   
-    Real-World Catches
+    Historical Scenarios
   
 
     
@@ -570,6 +609,177 @@
   
   
   
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Snippets
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Agent Snippets
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../agents-md-snippet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AGENTS.md
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claude-md-snippet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLAUDE.md
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../github-copilot-instructions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GitHub Copilot
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cursor-rule-snippet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cursor
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     <li class="md-nav__item">
       <a href="../../schema/" class="md-nav__link">
         
@@ -606,6 +816,33 @@
     
   
     Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validation
   
 
     
@@ -699,10 +936,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#context" class="md-nav__link">
+  <a href="#historical-context" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Context
+        Historical context
       
     </span>
   </a>
@@ -753,8 +990,10 @@
 
 <h1 id="002-selective-trigger-over-always-on">002. Selective trigger over always-on<a class="headerlink" href="#002-selective-trigger-over-always-on" title="Permanent link">&para;</a></h1>
 <p><strong>Status:</strong> Accepted</p>
-<h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
-<p>Early testing with always-on analysis (report on every change) was noisy. A/B testing showed 2 out of 3 test scenarios had zero improvement in code quality when the tool reported on everything. Developers and agents learned to ignore it.</p>
+<h2 id="historical-context">Historical context<a class="headerlink" href="#historical-context" title="Permanent link">&para;</a></h2>
+<p>Early prototype testing suggested that always-on analysis (report on every change) was noisy. The
+manual scenarios were exploratory, not a reproducible benchmark, and their exact caller counts are
+withdrawn because name-only matching did not prove ownership.</p>
 <p>The core problem: most code changes are body-only refactors that don't affect any callers. Reporting on them adds noise without value.</p>
 <h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
 <p>DiffGuard only speaks when high-signal changes are detected. The trigger criteria:</p>
@@ -765,13 +1004,14 @@
 <li><strong>File moves with dependents</strong> — imports need updating</li>
 </ul>
 <p>Body-only changes (same signature, different implementation) produce silence.</p>
-<p>Implementation: <code>engine/findings.py::is_high_signal()</code> checks these criteria. If none match, exit code 0 (silence).</p>
+<p>Implementation: <code>engine/findings.py::is_high_signal()</code> checks the current high-signal criteria. If
+none match, review mode exits 0 without findings.</p>
 <h2 id="consequences">Consequences<a class="headerlink" href="#consequences" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>100% precision</strong> — when DiffGuard speaks, it's useful</li>
-<li><strong>58% silence rate</strong> — most commits get no output, which is correct</li>
+<li><strong>Lower output volume</strong> — body-only changes do not trigger contract findings</li>
+<li><strong>No general precision claim</strong> — only the checked-in synthetic corpus has reproducible metrics</li>
 <li><strong>Risk:</strong> May miss some useful edge cases where body changes matter (e.g., changed semantics with same signature)</li>
-<li><strong>Mitigation:</strong> <code>--verbose</code> flag forces full output for users who want it</li>
+<li><strong>Mitigation:</strong> target-project compilers, type checkers, tests, and review remain required</li>
 </ul>
 
 

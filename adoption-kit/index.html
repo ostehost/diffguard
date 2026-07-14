@@ -265,7 +265,7 @@
   
     
   
-  Real-World Catches
+  Historical Scenarios
 
       </a>
     </li>
@@ -315,6 +315,26 @@
   
   
   
+    
+    
+      <li class="md-tabs__item">
+        <a href="../agents-md-snippet/" class="md-tabs__link">
+          
+  
+  
+  Agent Snippets
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
     <li class="md-tabs__item">
       <a href="../schema/" class="md-tabs__link">
         
@@ -342,6 +362,25 @@
     
   
   Architecture
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../validation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Validation
 
       </a>
     </li>
@@ -501,7 +540,7 @@
   <span class="md-ellipsis">
     
   
-    Real-World Catches
+    Historical Scenarios
   
 
     
@@ -574,6 +613,177 @@
   
   
   
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Snippets
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Agent Snippets
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents-md-snippet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AGENTS.md
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claude-md-snippet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLAUDE.md
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../github-copilot-instructions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GitHub Copilot
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cursor-rule-snippet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cursor
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     <li class="md-nav__item">
       <a href="../schema/" class="md-nav__link">
         
@@ -610,6 +820,33 @@
     
   
     Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validation
   
 
     
@@ -886,21 +1123,31 @@
 <a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>
 <a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>uv<span class="w"> </span>lock<span class="w"> </span>--check
 <a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>just<span class="w"> </span>ci
-<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>uv<span class="w"> </span>build
-<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>uv<span class="w"> </span>run<span class="w"> </span>diffguard<span class="w"> </span>review<span class="w"> </span>origin/main..HEAD<span class="w"> </span>--format<span class="w"> </span>json<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">test</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$?</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">1</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>just<span class="w"> </span>validate-corpus
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>just<span class="w"> </span>docs-build
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>uv<span class="w"> </span>build
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="nb">set</span><span class="w"> </span>+e
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>uv<span class="w"> </span>run<span class="w"> </span>diffguard<span class="w"> </span>review<span class="w"> </span>--against<span class="w"> </span>origin/main<span class="w"> </span>--worktree<span class="w"> </span>--format<span class="w"> </span>json
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a><span class="nv">rc</span><span class="o">=</span><span class="nv">$?</span>
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="nb">set</span><span class="w"> </span>-e
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a><span class="nb">test</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$rc</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">test</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$rc</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">1</span>
 </code></pre></div>
 <h2 id="self-review-gate-ranges">Self-review gate ranges<a class="headerlink" href="#self-review-gate-ranges" title="Permanent link">&para;</a></h2>
 <p>CI validates <code>diffguard review --format json</code> output without failing on exit <code>1</code>, because that
-status means findings were present rather than the tool failed. Pull request checks compare the PR
-base commit to the checked-out head. Push checks compare the previous pushed commit to the new head;
-new branches fall back to the default branch as the base.</p>
+status means findings were present rather than the tool failed. Pull request checks use a
+three-dot range from the PR base so only the branch's merge-base-relative changes are reviewed.
+Push checks compare the previous pushed commit to the new head; new branches fall back to a
+three-dot range from the default branch.</p>
 <h2 id="repo-local-rules">Repo-local rules<a class="headerlink" href="#repo-local-rules" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>uv.lock</code> is committed and checked with <code>uv lock --check</code>; CI installs through <code>uv sync --group dev --group docs</code> or an equivalent locked sync.</li>
 <li><code>ruff</code>, <code>mypy --strict</code>, and <code>pytest</code> are the required quality gate via <code>just ci</code>.</li>
 <li>Generated artifacts and local tool state stay ignored: caches, virtualenvs, coverage output, <code>dist/</code>, <code>build/</code>, <code>site/</code>, and <code>.clawpatch/</code>.</li>
 <li><code>.clawpatch/</code> is intentionally local-only because its project state includes machine-specific absolute paths.</li>
-<li>DiffGuard reports package version from one source (<code>diffguard.__version__</code>) for CLI version output; JSON <code>version</code> fields describe DiffGuard review output schema compatibility and must change only with schema semantics.</li>
+<li>Package metadata and CLI runtime versions are intentionally duplicated in <code>pyproject.toml</code> and
+  <code>diffguard.__version__</code>; the release workflow refuses a tag unless all three values match. JSON
+  <code>version</code> fields describe review/summarize schema compatibility and change only with schema
+  semantics.</li>
 <li>Preserve checks must re-resolve live: use <code>just preserve-verify</code>, <code>just preserve-verify-checksum</code>, or <code>just preserve-verify-bundle</code> rather than relying on stale notes.</li>
 </ul>
 <h2 id="do-not-generalize">Do not generalize<a class="headerlink" href="#do-not-generalize" title="Permanent link">&para;</a></h2>
@@ -909,6 +1156,7 @@ new branches fall back to the default branch as the base.</p>
 <li>The tracked <code>.vscode/settings.json</code> is project metadata only. Do not add machine-local interpreter paths or user-specific editor settings there.</li>
 <li>Release artifacts in <code>dist/</code> are build outputs, not source preservation. Rebuild them from source during release gates.</li>
 <li>DiffGuard review exit code <code>1</code> means high-signal findings were present, not a tool failure; gates that run <code>diffguard review</code> should explicitly tolerate exit <code>1</code> when the JSON/text output is valid.</li>
+<li>Closeout guidance uses <code>--worktree</code> once near completion. Do not recommend a per-edit <code>HEAD~1..HEAD</code> scan, which examines committed history instead of current edits.</li>
 </ul>
 
 
