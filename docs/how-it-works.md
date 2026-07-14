@@ -1,87 +1,49 @@
 # How It Works
 
-## The approach: selective trigger
+## Pipeline
 
-Most diffs don't contain structural breaks. New functions, body-only changes, formatting — none of these affect callers. DiffGuard's core design: **stay silent unless the change is structurally significant.**
-
-This means DiffGuard only reports when it finds:
-
-| Trigger | What it means |
-|---------|---------------|
-| **Signature changed** | Function contract changed — callers may pass wrong arguments |
-| **Default value changed** | Callers relying on the default get different behavior silently |
-| **Symbol removed** | Dependents will break |
-| **Symbol moved** | Imports need updating |
-
-Body-only changes (same signature, different implementation) are internal refactors. They don't affect callers. DiffGuard ignores them.
-
-## The pipeline
-
-```
-git diff → parse → extract → match → classify → scan callers → output (or silence)
+```text
+Git snapshot diff -> parse -> extract -> match -> compare signature/body -> classify
+                  -> scan AST-context name references -> validate review envelope
 ```
 
-1. **Parse the diff** — tree-sitter builds ASTs for before/after versions of each changed file. Not regex — full syntax trees.
-2. **Extract symbols** — functions, classes, methods with full signatures, line numbers, and scope.
-3. **Match old ↔ new** — O(n) dict-based name matching. No fuzzy rename detection (accuracy over comprehensiveness).
-4. **Classify changes** — labels each symbol: added, removed, modified, moved, signature_changed. Sets `breaking` flag where applicable.
-5. **Scan for callers** — two-stage: `git grep` pre-filters for speed, then tree-sitter confirms references in non-diff files.
-6. **Apply selective trigger** — only produce output if high-signal changes exist AND have external callers.
+1. `git.py` obtains a committed, index, or base-to-worktree diff and file contents.
+2. Language modules extract functions, methods, classes, signatures, and body hashes.
+3. The matcher pairs symbols by name/kind/parent and detects bounded cross-file moves.
+4. Signature comparison runs independently of body comparison, so a pure default or annotation edit cannot disappear behind an equal body hash.
+5. The classifier attaches stable rule/category IDs, factual compatibility status, confidence, evidence, and analysis gaps.
+6. Reference scanning uses `git grep` as a candidate filter and tree-sitter to label imports, calls, and non-call references. Declarations are excluded; changed files are included.
+7. `schema.py` validates populated, empty, partial, and error review envelopes.
 
-Typical timing: ~200ms for a 1000-line diff.
+## Compatibility policy
 
-## Why tree-sitter
+| Language | What DiffGuard claims |
+|---|---|
+| Python | Bounded call-shape facts for parameter addition/removal/reorder and defaults. Annotation changes are syntax with unknown semantic compatibility. |
+| TypeScript/JavaScript | Parameter/return syntax changes for extracted function, arrow-function, and class-method declarations, plus class declarations. Overload declarations and interface members are not extracted. Compatibility remains unknown without type and compiler resolution. |
+| Go | Parameter/return syntax changes for extracted function and method declarations. Interface methods are not extracted. Compatibility remains unknown without compiler, interface, method-set, and call resolution. |
 
-Tree-sitter provides C-speed parsing with pre-built binaries for 40+ languages. It gives DiffGuard real syntax trees instead of regex-based guesses. Adding a new language is mechanical: grammar + query patterns.
+`breaking: true` means a bounded rule proves an incompatible Python call shape. `false` means that bounded rule found no call-shape break; it does not mean behavior is unchanged. `null` means compatibility was not proven. Removed declarations are findings, but their public/export impact remains unknown.
 
-Currently supported: Python (most mature), TypeScript/JavaScript, Go. More planned.
+## Reference policy
 
-## Precision over recall
+A matching AST name can be classified syntactically, but same-named symbols in different modules cannot be assigned exact ownership without resolution. Every emitted reference therefore includes:
 
-We tested three iterations before landing on the current design.
+- `kind`: `import`, `call`, or `reference`;
+- `confidence`: currently `low` for ownership;
+- `resolution`: `unresolved`;
+- evidence explaining the AST name match.
 
-Early versions tried to report on every structural change in a diff. A/B testing against 12 real commits from Flask, FastAPI, Pydantic, and httpx showed that most PRs don't benefit from structural analysis — the reviewer can read the diff fine on their own.
+Import evidence remains useful for moved symbols, but it is not presented as an exact dependent.
 
-The selective trigger changed the results:
+## Selective output and gaps
 
-| Metric | Result |
-|--------|--------|
-| **Precision** | 100% — when it spoke, it was right |
-| **Silence rate** | 58% — stayed quiet on 7 of 12 PRs |
-| **False positives** | 0 |
+Signature changes, removed symbols, and possible cross-file move candidates trigger findings. Body-only changes and additions remain silent. Dependency references add evidence but do not trigger findings on their own.
 
-The key insight: making silence the default turned a marginally useful tool into a precision instrument. A tool that says "`redirect()` default changed from 302 to 303, 7 callers affected" is always right. A tool that comments on every PR trains you to ignore it.
+If either side of a changed supported-language file has a tree-sitter parse error, DiffGuard reports a parse-gap warning and suppresses symbol findings for that file. Unavailable content is handled the same way. This trades recall for truthful evidence.
 
-## What agents get
+## Validation boundary
 
-Without DiffGuard, an AI reviewing a PR sees:
-```
--def redirect(location, code=302, Response=None):
-+def redirect(location, code=303, Response=None):
-```
-
-With DiffGuard:
-```
-DEFAULT VALUE CHANGED: redirect(location, code=302) → redirect(location, code=303)
-Impact: 5 callers rely on the default:
-  auth.py:25  `return redirect(url_for("auth.login"))`
-  auth.py:77  `return redirect(url_for("index"))`
-  blog.py:81  `return redirect(url_for("blog.index"))`
-Review: Verify callers expect HTTP 303 instead of 302
-```
-
-The difference: "I see a number changed" vs. "I see a behavioral change that affects 5 call sites across 3 files."
-
-## Limitations
-
-DiffGuard's value scales with PR size:
-
-| PR size | Value |
-|---------|-------|
-| Small (<100 lines, 1-2 files) | **Minimal.** The reviewer can read the whole diff. |
-| Medium (200-500 lines) | **Moderate.** Structural overview saves time. |
-| Large (500+ lines, multiple files) | **Significant.** Linear reading of 1000+ lines misses structural patterns. |
-
-DiffGuard is not magic. On small, focused PRs, you don't need it.
-
-For detailed internals, see [Architecture](architecture.md).
+`just validate-corpus` reports the current local synthetic sample, misses, false positives, parse
+gaps, and per-rule precision/recall. It does not establish universal accuracy or replace the target
+project's compiler and tests.

@@ -1,166 +1,183 @@
 # Agent Integration Guide
 
-DiffGuard works with any AI agent that can run shell commands.
-
-## Quick setup
+Run DiffGuard once near task completion against actual worktree state:
 
 ```bash
-pip install diffguard
+set +e
+python3 .agents/skills/diffguard-closeout/scripts/run_review.py \
+  --base origin/main \
+  --timeout-seconds 300 \
+  --max-output-bytes 10485760
+rc=$?
+set -e
 ```
 
-Add one instruction to your agent's system prompt or config:
+Interpret `rc` exactly: `0` no findings, `1` findings, `2` tool or
+resource-bound error. On every exit, record the two artifact paths printed by
+the runner, validate/read the JSON, and inspect the bounded stderr artifact,
+warnings, parse errors, evidence, and analysis gaps. Resolve each finding or
+record a specific explanation. Rerun only after a relevant code change, then
+run project checks.
 
+On supported macOS/Linux POSIX agent hosts, the standard-library runner avoids
+a dependency on GNU `timeout` and invokes the project through `uv run --locked`.
+It is not a Windows runner. It stops the review process group after five minutes
+or 10 MiB of combined output, maps a bound violation or unexpected child status
+to exit `2`, and creates unique JSON and stderr artifacts with mode `0600`, so
+concurrent agents cannot clobber one shared result. Retain both as the forensic
+receipt through final review or handoff. Report their unique paths and cleanup
+owner, then remove only those exact paths after the receiver acknowledges the
+handoff; never use a glob or clean the shared temporary directory.
+
+Do not use an after-edit `HEAD~1..HEAD` hook: it inspects the last commit, not the current edits. Prefer Stop/TaskCompleted/finish guidance and `--worktree`.
+
+## Repository skill
+
+The repository-local `diffguard-closeout` skill at `.agents/skills/diffguard-closeout/SKILL.md` contains the complete bounded workflow and canonical checks.
+
+## AGENTS.md snippet
+
+```markdown
+## Closeout contract verification
+
+Near task completion, run `diffguard review --against origin/main --worktree --format json` once. Exit 1 means findings, not tool failure: resolve each finding or explain it with evidence. Exit 2 is an error. Inspect warnings/parse gaps, then run the repository's required checks. Treat references as unresolved syntactic evidence, not exact callers.
 ```
-Before reviewing any diff, run: diffguard review <base>..HEAD
+
+## CLAUDE.md snippet
+
+```markdown
+At task completion, run `diffguard review --against origin/main --worktree --format json`. Handle exits 0/1/2 explicitly; never append `|| true`. Resolve or explain findings and warnings before final project checks. Do not run a full scan after every edit.
 ```
 
-That's it. DiffGuard is silent (exit 0) when nothing is noteworthy, so it won't add noise.
+See the standalone [CLAUDE.md snippet](claude-md-snippet.md).
 
-## Two commands for agents
+## GitHub Copilot instructions snippet
 
-### `diffguard review` — selective, high-signal (primary)
+Add to `.github/copilot-instructions.md`:
+
+```markdown
+Before declaring a coding task complete, run `diffguard review --against origin/main --worktree --format json`. Treat exit 1 as structured findings and exit 2 as failure. Read warnings and analysis gaps, and never describe unresolved syntactic references as proven callers.
+```
+
+See the standalone [GitHub Copilot instructions](github-copilot-instructions.md).
+
+## Claude Code TaskCompleted/Stop wrapper
+
+Claude Code hook exits are not DiffGuard exits: hook exit `2` blocks `Stop` or `TaskCompleted`, while hook exit `1` is non-blocking. The wrapper must therefore translate DiffGuard findings/errors to hook exit `2`. For a `Stop` hook, consume the hook JSON and allow the second stop attempt when `stop_hook_active` is already true so the hook cannot continue forever.
 
 ```bash
-diffguard review main..HEAD --format json
-```
-
-Returns only high-signal findings: signature changes, removed symbols, default value changes. Silent when nothing matters. Best for CI gates and "should I look closer?" decisions.
-
-### `diffguard summarize` — full structural map
-
-```bash
-diffguard summarize main..HEAD --format json
-```
-
-Returns a complete structural summary of the diff (~200-300 tokens). Always produces output. Best when the agent needs a full map before reading the diff.
-
-## Exit codes (review command)
-
-| Code | Meaning | Agent action |
-|------|---------|--------------|
-| 0 | No high-signal findings | Continue normally |
-| 1 | Findings present | Read stdout, address each finding |
-| 2 | Error (not a repo, bad ref) | Report the error |
-
-## Example output
-
-### Review (text)
-
-```
-⚠ DiffGuard: 2 changes need review
-
-1. DEFAULT VALUE CHANGED: redirect(location, code=302, Response) → redirect(location, code=303, Response)
-   File: src/flask/helpers.py:241
-   Impact: 7 callers rely on the default:
-     auth.py:25   `return redirect(url_for("auth.login"))`
-     ...
-   Review: Verify callers expect the new default value
-```
-
-*Real output from Flask commit `eca5fd1d`.*
-
-### Review (JSON)
-
-```json
-{
-  "version": "0.2.0",
-  "ref_range": "main..HEAD",
-  "findings": [
-    {
-      "category": "SIGNATURE_CHANGED",
-      "symbol": "authenticate",
-      "file": "src/auth/users.py",
-      "line": 34,
-      "before_signature": "def authenticate(name, email)",
-      "after_signature": "def authenticate(name, email, role=\"viewer\")",
-      "impact": {
-        "production_callers": 3,
-        "test_callers": 2,
-        "callers": [...]
-      },
-      "review_hint": "Check all callers handle the new signature"
-    }
-  ],
-  "warnings": [],
-  "stats": {
-    "files_analyzed": 5,
-    "symbols_changed": 8,
-    "parse_errors": 0,
-    "silence_reason": null
-  }
-}
-```
-
-!!! note "Illustrative example"
-    The JSON above shows the schema structure with realistic field values. See [Schema Reference](schema.md#review-output) for the full specification.
-
-## Claude Code
-
-Add the snippet to your repo's `CLAUDE.md` — see [claude-md-snippet.md](claude-md-snippet.md).
-
-### Claude Code Hook
-
-Wire DiffGuard as a hook that runs automatically after edits:
-
-`.claude/settings.json`:
-
-```json
-{
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write|MultiEdit",
-        "command": "diffguard review HEAD~1..HEAD --format text 2>/dev/null || true"
-      }
-    ]
-  }
-}
-```
-
-Or as a one-shot check when a task completes:
-
-```json
-{
-  "hooks": {
-    "TaskCompleted": [
-      {
-        "command": "diffguard review $(git merge-base main HEAD)..HEAD"
-      }
-    ]
-  }
-}
-```
-
-## Cursor
-
-Add a rule file at `.cursor/rules/diffguard.mdc` — see [cursor-rule-snippet.md](cursor-rule-snippet.md).
-
-## Integration patterns
-
-### CI/CD pre-review
-
-```bash
-# In your CI pipeline, before AI review
-FINDINGS=$(diffguard review $BASE_SHA..HEAD --format json)
-if [ $? -eq 1 ]; then
-  echo "$FINDINGS" | your-agent-review-command
+hook_input=$(cat)
+if ! stop_hook_active=$(printf '%s' "$hook_input" | python3 -c \
+  'import json, sys; print(str(bool(json.load(sys.stdin).get("stop_hook_active", False))).lower())'); then
+  echo "Invalid Claude hook input JSON" >&2
+  exit 2
 fi
+if [ "$stop_hook_active" = "true" ]; then
+  exit 0
+fi
+
+set +e
+runner_output=$(python3 .agents/skills/diffguard-closeout/scripts/run_review.py \
+  --base origin/main \
+  --timeout-seconds 300 \
+  --max-output-bytes 10485760)
+rc=$?
+set -e
+printf '%s\n' "$runner_output" >&2
+case "$rc" in
+  0)
+    if ! review_artifact=$(printf '%s\n' "$runner_output" | python3 -c '
+import json
+import sys
+
+prefix = "DiffGuard review artifact: "
+paths = [
+    json.loads(line.removeprefix(prefix))
+    for line in sys.stdin.read().splitlines()
+    if line.startswith(prefix)
+]
+if len(paths) != 1 or not isinstance(paths[0], str) or not paths[0]:
+    raise SystemExit(2)
+print(paths[0])
+'); then
+      printf 'DiffGuard clean result had no unique review artifact; retain any artifacts above.\n' >&2
+      exit 2
+    fi
+    if ! python3 - "$review_artifact" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+try:
+    payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+    stats = payload.get("stats") if isinstance(payload, dict) else None
+    complete = (
+        isinstance(payload, dict)
+        and payload.get("status") == "ok"
+        and payload.get("warnings") == []
+        and isinstance(stats, dict)
+        and type(stats.get("parse_errors")) is int
+        and stats["parse_errors"] == 0
+    )
+except (OSError, UnicodeError, json.JSONDecodeError, KeyError, TypeError):
+    complete = False
+raise SystemExit(0 if complete else 2)
+PY
+    then
+      printf 'DiffGuard clean result is invalid or incomplete; inspect and retain the artifacts above.\n' >&2
+      exit 2
+    fi
+    exit 0
+    ;;
+  1) printf 'DiffGuard findings require resolution; retain the artifacts above.\n' >&2; exit 2 ;;
+  2) printf 'DiffGuard tool/resource error; inspect and retain the artifacts above.\n' >&2; exit 2 ;;
+  *) printf 'Unexpected closeout-runner exit %s; retain any artifacts above.\n' "$rc" >&2; exit 2 ;;
+esac
 ```
 
-### Git hook
+Install/trust this wrapper as repository code and pin the DiffGuard
+version/source used by the agent. It uses Python, already required by
+DiffGuard, rather than making loop prevention depend on an optional JSON
+utility or GNU `timeout`. A TaskCompleted hook does not provide
+`stop_hook_active`; the `False` fallback leaves its first failure blocking as
+intended. Even after runner exit `0`, the wrapper fails closed unless the
+retained JSON has `status: "ok"`, no warnings, and an integer
+`stats.parse_errors` of zero. The bounded runner retains private artifacts on
+clean, findings, error, timeout, output overflow, and interruption paths. The
+inspecting agent owns cleanup after the completion decision or handoff is
+acknowledged.
 
-```bash
-# .git/hooks/post-commit
-diffguard review HEAD~1..HEAD
+## GitHub Action
+
+Pin the Action to an immutable reviewed SHA. The composite Action installs from `${{ github.action_path }}`, so it cannot drift to an unrelated PyPI version. Each run uses and then removes a unique temporary virtual environment, including on persistent self-hosted runners. Runtime dependencies and the complete PEP 517 backend closure are exact-constrained separately; the local checkout is built without a second isolated dependency resolution.
+
+`actions/setup-python` v6.3.0 runs on Node 24. Self-hosted Action consumers require GitHub
+Actions Runner v2.327.1 or newer; GitHub-hosted runners are managed by GitHub.
+
+```yaml
+- uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+  with:
+    fetch-depth: 0
+    persist-credentials: false
+- uses: ostehost/diffguard@<full-commit-sha>
+  with:
+    post-comment: "false"
 ```
 
-## Scope
+Set `post-comment: "true"` only when PR comments are intended and `pull-requests: write` is granted. A `pull_request` workflow must keep it false for public-fork and Dependabot runs, whose `GITHUB_TOKEN` is read-only; the example workflow uses a same-repository, non-Dependabot expression so those runs still analyze the change without attempting a comment API write. Its `id: diffguard` exposes the no-comment fallback as `steps.diffguard.outputs.findings`, `steps.diffguard.outputs.findings-truncated`, `steps.diffguard.outputs.analysis-incomplete`, and `steps.diffguard.outputs.exit-code`; downstream policy can surface or gate on those outputs without any API mutation. Require `analysis-incomplete` to be `false` before treating exit `0` as a clean review: structured JSON warnings, parse errors, invalid JSON, and the text format's analysis-warning stream all make the result incomplete. Oversized output is bounded for GitHub's per-job output limit while the full protected output remains in the step log. When comments are enabled, an incomplete run creates or updates the owned comment with an explicit warning instead of deleting prior findings.
 
-DiffGuard catches **structural breaks**: signature changes, removed symbols, default value changes. It does **not** catch logic bugs, security issues, or performance problems. See [What it catches](index.md#what-it-catches).
+On a `pull_request` run with `post-comment: "true"`, omit `ref-range`. The Action rejects a custom range before invoking DiffGuard so the visible comment and its hidden base/head identity always describe the range actually reviewed. Custom ranges remain available when comments are disabled or outside a pull-request event.
 
-## Supported languages
+For a comment-enabled PR workflow, queue per-PR jobs as defense in depth and to preserve final ordering; cancellation is not an API-write fence. The Action's correctness boundary is its non-overlapping hidden v2 identity, versioned by the analyzed base and head SHAs. It snapshots, adopts, updates, and deletes only comments for that exact state, then rechecks freshness after a findings write and rolls back only its own state if stale. Because GitHub does not document compare-and-swap for comment writes, the Action never mutates cross-state, future-version, or legacy comments. Historical-state comments can therefore remain; each v2 comment visibly labels its analyzed base and head so a base-only update cannot make an older result look current.
 
-- **Python** — most mature, extensive real-world validation
-- TypeScript / JavaScript
-- Go
-- More planned (Rust, Java, C#)
+```yaml
+jobs:
+  diffguard:
+    concurrency:
+      group: ${{ github.workflow }}-diffguard-${{ github.event.pull_request.number || github.run_id }}
+      cancel-in-progress: false
+```
+
+## Evidence boundary
+
+DiffGuard references are AST-context name matches. Use `kind`, `confidence`, `resolution`, and `evidence`; independently inspect imports/modules before assigning ownership. Run the target project's compiler, type checker, tests, and required checks after DiffGuard.

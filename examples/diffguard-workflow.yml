@@ -11,13 +11,24 @@ permissions:
 
 jobs:
   diffguard:
+    concurrency:
+      group: ${{ github.workflow }}-diffguard-${{ github.event.pull_request.number || github.run_id }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - uses: ostehost/diffguard@main
+      # Replace with a reviewed immutable commit SHA. The Action installs the
+      # DiffGuard package from that selected checkout, not from PyPI.
+      - id: diffguard
+        uses: ostehost/diffguard@<full-commit-sha>
         with:
           python-version: "3.11"
-          post-comment: "true"
+          # Fork and Dependabot pull requests receive a read-only token. Keep
+          # analysis enabled, but do not invoke the comment API in those runs.
+          post-comment: >-
+            ${{ github.event.pull_request.head.repo.full_name == github.repository &&
+                github.actor != 'dependabot[bot]' }}

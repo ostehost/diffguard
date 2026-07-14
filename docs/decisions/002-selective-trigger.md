@@ -2,9 +2,11 @@
 
 **Status:** Accepted
 
-## Context
+## Historical context
 
-Early testing with always-on analysis (report on every change) was noisy. A/B testing showed 2 out of 3 test scenarios had zero improvement in code quality when the tool reported on everything. Developers and agents learned to ignore it.
+Early prototype testing suggested that always-on analysis (report on every change) was noisy. The
+manual scenarios were exploratory, not a reproducible benchmark, and their exact caller counts are
+withdrawn because name-only matching did not prove ownership.
 
 The core problem: most code changes are body-only refactors that don't affect any callers. Reporting on them adds noise without value.
 
@@ -19,11 +21,12 @@ DiffGuard only speaks when high-signal changes are detected. The trigger criteri
 
 Body-only changes (same signature, different implementation) produce silence.
 
-Implementation: `engine/findings.py::is_high_signal()` checks these criteria. If none match, exit code 0 (silence).
+Implementation: `engine/findings.py::is_high_signal()` checks the current high-signal criteria. If
+none match, review mode exits 0 without findings.
 
 ## Consequences
 
-- **100% precision** — when DiffGuard speaks, it's useful
-- **58% silence rate** — most commits get no output, which is correct
+- **Lower output volume** — body-only changes do not trigger contract findings
+- **No general precision claim** — only the checked-in synthetic corpus has reproducible metrics
 - **Risk:** May miss some useful edge cases where body changes matter (e.g., changed semantics with same signature)
-- **Mitigation:** `--verbose` flag forces full output for users who want it
+- **Mitigation:** target-project compilers, type checkers, tests, and review remain required

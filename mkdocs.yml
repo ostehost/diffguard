@@ -28,11 +28,17 @@ theme:
 nav:
   - Home: index.md
   - Quickstart: quickstart.md
-  - Real-World Catches: real-world-catches.md
+  - Historical Scenarios: real-world-catches.md
   - How It Works: how-it-works.md
   - Agent Integration: agent-integration.md
+  - Agent Snippets:
+      - AGENTS.md: agents-md-snippet.md
+      - CLAUDE.md: claude-md-snippet.md
+      - GitHub Copilot: github-copilot-instructions.md
+      - Cursor: cursor-rule-snippet.md
   - Schema Reference: schema.md
   - Architecture: architecture.md
+  - Validation: validation.md
   - Roadmap: roadmap.md
   - Standards Adoption Kit: adoption-kit.md
 

@@ -1,154 +1,89 @@
 # Quick Start
 
-## Install
+## Install the `0.2.0` contract
+
+The commands below require DiffGuard `0.2.0` or newer. Install a compatible published release when
+available:
 
 ```bash
-pip install diffguard
+python -m pip install "diffguard>=0.2.0,<0.3"
 ```
 
-## `diffguard review` — the primary command
-
-Surfaces high-signal structural changes. Silent when nothing is noteworthy.
+Or use the repository checkout:
 
 ```bash
-# Review last commit
-diffguard review HEAD~1..HEAD
-
-# Review a PR branch
-diffguard review main..feature-branch
+uv sync --locked --group dev --group docs
+uv run diffguard --version
 ```
 
-### Exit codes
+## Review modes
+
+```bash
+# Existing committed-range semantics
+uv run diffguard review HEAD~1..HEAD
+uv run diffguard review main..feature --format json
+
+# Existing index-only semantics
+uv run diffguard review --staged --format json
+
+# Agent closeout: base merge-base versus current worktree
+uv run diffguard review --against origin/main --worktree --format json
+```
+
+`--worktree` includes staged and unstaged tracked changes plus added/deleted files. It cannot be combined with a positional ref range; use `--against`. Without `--against`, its base defaults to `HEAD`.
+
+## Exit codes
 
 | Code | Meaning |
-|------|---------|
-| 0 | No high-signal findings (no output) |
-| 1 | Findings present — read stdout |
-| 2 | Error |
+|---|---|
+| `0` | No findings. Inspect warnings and parse-gap statistics before treating the run as complete. |
+| `1` | Findings exist in stdout. |
+| `2` | Tool error. JSON remains schema-valid when `--format json` was requested. |
 
-### Example output (text)
+## Review JSON shape
 
-```
-⚠ DiffGuard: 2 changes need review
-
-1. DEFAULT VALUE CHANGED: redirect(location, code=302, Response) → redirect(location, code=303, Response)
-   File: src/flask/helpers.py:241
-   Impact: 7 callers rely on the default:
-     auth.py:25   `return redirect(url_for("auth.login"))`
-     auth.py:77   `return redirect(url_for("auth.login"))`
-     auth.py:105  `return redirect(url_for("index"))`
-     blog.py:81   `return redirect(url_for("blog.index"))`
-   Review: Verify callers expect the new default value
-
-2. DEFAULT VALUE CHANGED: App.redirect(self, location, code=302) → App.redirect(self, location, code=303)
-   File: src/flask/sansio/app.py:935
-   Impact: 7 callers rely on the default
-   Review: Verify callers expect the new default value
-```
-
-*Real output from DiffGuard run against Flask commit `eca5fd1d`.*
-
-### Example output (JSON)
-
-```bash
-diffguard review HEAD~1..HEAD --format json
-```
-
-When there are no findings:
+An empty worktree result has this shape:
 
 ```json
 {
-  "version": "0.2.0",
-  "ref_range": "HEAD~1..HEAD",
+  "version": "1.1.0",
+  "status": "ok",
+  "mode": "worktree",
+  "ref_range": "abc123..:worktree",
   "findings": [],
   "warnings": [],
   "stats": {
-    "files_analyzed": 1,
+    "files_analyzed": 0,
     "symbols_changed": 0,
     "parse_errors": 0,
-    "silence_reason": "no high-signal changes"
-  }
+    "reference_count": 0,
+    "silence_reason": "no changes in diff"
+  },
+  "error": null
 }
 ```
 
-See [Schema Reference](schema.md#review-output) for the full schema.
+Findings add stable `rule_id`/`category_id`, factual `breaking`, `confidence`, `evidence`,
+`analysis_gaps`, and unresolved syntactic `references`. Move findings also set optional
+`source_file` evidence while `file` remains the destination. See the
+[Schema Reference](schema.md).
 
----
+## Summaries
 
-## `diffguard summarize` — full structural summary
-
-Always produces output. Gives a complete map of what changed structurally — useful for agents that want the full picture, not just the high-signal items.
+`summarize` emits the `schema_version: "2.0"` contract. The version changed because
+`SymbolChange.breaking` is now tri-state (`true`, `false`, or `null`):
 
 ```bash
-# Summarize last commit
-diffguard summarize HEAD~1..HEAD
+# HEAD versus staged, unstaged, and untracked worktree state (default)
+uv run diffguard summarize --format json
 
-# Choose output tier
-diffguard summarize HEAD~1..HEAD --format oneliner
-diffguard summarize HEAD~1..HEAD --format short
-diffguard summarize HEAD~1..HEAD --format json
+# Explicit committed range
+uv run diffguard summarize HEAD~1..HEAD --format json
 ```
 
-### Example output (JSON)
+Repository-backed commands resolve the top-level worktree first, so running either command
+from a nested directory preserves repository-relative paths and includes top-level changes.
 
-```json
-{
-  "schema_version": "1.1",
-  "meta": {
-    "ref_range": "abc1234..def5678",
-    "stats": { "files": 3, "additions": 340, "deletions": 89 },
-    "warnings": [],
-    "timing_ms": 187.4
-  },
-  "files": [
-    {
-      "path": "src/auth/client.ts",
-      "language": "typescript",
-      "change_type": "modified",
-      "changes": [
-        {
-          "kind": "function_removed",
-          "name": "authenticate",
-          "signature": "authenticate(apiKey: string): Promise<Session>",
-          "line": 45,
-          "breaking": true
-        }
-      ]
-    }
-  ],
-  "summary": {
-    "change_types": { "feature": 1, "refactor": 2 },
-    "breaking_changes": [...],
-    "focus": ["authenticate() removed — callers need migration"]
-  },
-  "tiered": {
-    "oneliner": "Replace API key auth with OAuth2 PKCE; 2 breaking changes",
-    "short": "Removes authenticate(apiKey), adds authenticateOAuth(config)...",
-    "detailed": "..."
-  }
-}
-```
-
-!!! note "Illustrative example"
-    The JSON above is illustrative of the schema structure. Field names and types match the real schema — see [Schema Reference](schema.md#summarize-output) for details.
-
-See [Schema Reference](schema.md) for the full output format.
-
----
-
-## When to use which
-
-| Scenario | Command |
-|----------|---------|
-| CI gate / pre-review check | `diffguard review` |
-| Agent needs full structural map | `diffguard summarize` |
-| Quick "anything breaking?" check | `diffguard review` |
-| Feeding context to an AI reviewer | `diffguard summarize --format json` |
-
-## What DiffGuard tells you
-
-DiffGuard reports **structural facts**: which functions changed, what signatures broke, what was removed, which callers are affected.
-
-It does **not** tell you *why* something changed, whether the logic is correct, or whether it's a good idea. That's the reviewer's job.
-
-**Scope:** Signatures, removed symbols, default value changes. Not logic, security, or performance.
+Use `review` for a selective verifier closeout and `summarize` when an agent needs the broader structural map.
+An empty diff makes `summarize` exit `3`; with `--format json`, it still emits a valid
+`schema_version: "2.0"` envelope with zero files and changes.

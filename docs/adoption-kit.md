@@ -31,16 +31,23 @@ git -C "$repo" remote -v | grep -E 'glpat-|ghp_|gho_|//[^/@]+:[^/@]+@' \
 
 uv lock --check
 just ci
+just validate-corpus
+just docs-build
 uv build
-uv run diffguard review origin/main..HEAD --format json || test "$?" = 1
+set +e
+uv run diffguard review --against origin/main --worktree --format json
+rc=$?
+set -e
+test "$rc" = 0 || test "$rc" = 1
 ```
 
 ## Self-review gate ranges
 
 CI validates `diffguard review --format json` output without failing on exit `1`, because that
-status means findings were present rather than the tool failed. Pull request checks compare the PR
-base commit to the checked-out head. Push checks compare the previous pushed commit to the new head;
-new branches fall back to the default branch as the base.
+status means findings were present rather than the tool failed. Pull request checks use a
+three-dot range from the PR base so only the branch's merge-base-relative changes are reviewed.
+Push checks compare the previous pushed commit to the new head; new branches fall back to a
+three-dot range from the default branch.
 
 ## Repo-local rules
 
@@ -48,7 +55,10 @@ new branches fall back to the default branch as the base.
 - `ruff`, `mypy --strict`, and `pytest` are the required quality gate via `just ci`.
 - Generated artifacts and local tool state stay ignored: caches, virtualenvs, coverage output, `dist/`, `build/`, `site/`, and `.clawpatch/`.
 - `.clawpatch/` is intentionally local-only because its project state includes machine-specific absolute paths.
-- DiffGuard reports package version from one source (`diffguard.__version__`) for CLI version output; JSON `version` fields describe DiffGuard review output schema compatibility and must change only with schema semantics.
+- Package metadata and CLI runtime versions are intentionally duplicated in `pyproject.toml` and
+  `diffguard.__version__`; the release workflow refuses a tag unless all three values match. JSON
+  `version` fields describe review/summarize schema compatibility and change only with schema
+  semantics.
 - Preserve checks must re-resolve live: use `just preserve-verify`, `just preserve-verify-checksum`, or `just preserve-verify-bundle` rather than relying on stale notes.
 
 ## Do not generalize
@@ -57,3 +67,4 @@ new branches fall back to the default branch as the base.
 - The tracked `.vscode/settings.json` is project metadata only. Do not add machine-local interpreter paths or user-specific editor settings there.
 - Release artifacts in `dist/` are build outputs, not source preservation. Rebuild them from source during release gates.
 - DiffGuard review exit code `1` means high-signal findings were present, not a tool failure; gates that run `diffguard review` should explicitly tolerate exit `1` when the JSON/text output is valid.
+- Closeout guidance uses `--worktree` once near completion. Do not recommend a per-edit `HEAD~1..HEAD` scan, which examines committed history instead of current edits.
