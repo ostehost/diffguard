@@ -53,6 +53,39 @@ def index() -> str:
     assert "def index()" in sym.signature
 
 
+def test_async_modifier_is_part_of_function_and_method_signatures() -> None:
+    source = """\
+async def fetch() -> str:
+    return "value"
+
+class Client:
+    async def fetch(self) -> str:
+        return "value"
+"""
+    result = parse_file(source, "python")
+
+    function = next(symbol for symbol in result.symbols if symbol.kind == "function")
+    method = next(symbol for symbol in result.symbols if symbol.kind == "method")
+    assert function.signature == "async def fetch() -> str"
+    assert method.signature == "async def fetch(self) -> str"
+
+
+def test_type_parameters_are_part_of_function_and_class_signatures() -> None:
+    source = """\
+def identity[T: str](value: T) -> T:
+    return value
+
+class Box[T: str](Base):
+    pass
+"""
+    result = parse_file(source, "python")
+
+    function = next(symbol for symbol in result.symbols if symbol.kind == "function")
+    cls = next(symbol for symbol in result.symbols if symbol.kind == "class")
+    assert function.signature == "def identity[T: str](value: T) -> T"
+    assert cls.signature == "class Box[T: str](Base)"
+
+
 def test_nested_functions() -> None:
     source = """\
 def outer() -> None:

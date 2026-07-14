@@ -71,10 +71,15 @@ class TestCategorize:
         assert categorize_change(_sc("function_removed")) == "SYMBOL REMOVED"
 
     def test_moved(self) -> None:
-        assert categorize_change(_sc("moved")) == "SYMBOL MOVED"
+        assert categorize_change(_sc("moved")) == "POSSIBLE SYMBOL MOVE"
 
     def test_signature_delegates(self) -> None:
-        sc = _sc("signature_changed", before_signature="def f(a)", after_signature="def f()")
+        sc = _sc(
+            "signature_changed",
+            before_signature="def f(a)",
+            after_signature="def f()",
+            category="PARAMETER REMOVED",
+        )
         assert categorize_change(sc) == "PARAMETER REMOVED"
 
     def test_fallback(self) -> None:
@@ -116,22 +121,22 @@ class TestExtractFindings:
         assert [f.change.name for f in findings] == ["gone"]
         assert findings[0].category == "SYMBOL REMOVED"
 
-    def test_splits_prod_and_test_callers(self) -> None:
+    def test_splits_prod_and_test_references(self) -> None:
         out = _output(_sc("function_removed", name="gone"))
         refs = [
             Reference("src/app.py", 10, "gone", "call", "gone()"),
             Reference("tests/test_app.py", 5, "gone", "call", "gone()"),
         ]
         (finding,) = extract_findings(out, refs)
-        assert [r.file_path for r in finding.prod_callers] == ["src/app.py"]
-        assert [r.file_path for r in finding.test_callers] == ["tests/test_app.py"]
+        assert [r.file_path for r in finding.prod_references] == ["src/app.py"]
+        assert [r.file_path for r in finding.test_references] == ["tests/test_app.py"]
 
-    def test_import_refs_excluded(self) -> None:
+    def test_import_refs_are_preserved_as_syntactic_evidence(self) -> None:
         out = _output(_sc("function_removed", name="gone"))
         refs = [Reference("src/app.py", 1, "gone", "import", "from mod import gone")]
         (finding,) = extract_findings(out, refs)
-        assert finding.prod_callers == []
-        assert finding.test_callers == []
+        assert [ref.context for ref in finding.prod_references] == ["import"]
+        assert finding.test_references == []
 
     def test_finding_path_property(self) -> None:
         out = _output(_sc("function_removed"), path="pkg/thing.py")

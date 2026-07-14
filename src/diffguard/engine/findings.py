@@ -2,8 +2,8 @@
 
 A *finding* is a change worth surfacing to a reviewer: a signature change, a
 breaking change, a removed symbol, or a moved symbol. This module is the single
-source of truth for "what counts as high-signal" and for attaching caller
-impact to each finding. Both the text and JSON reporters consume :class:`Finding`
+source of truth for "what counts as high-signal" and for attaching syntactic
+reference evidence. Both text and JSON reporters consume :class:`Finding`
 objects so the trigger logic lives in exactly one place.
 """
 
@@ -12,10 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from diffguard.engine._paths import is_test_file
-from diffguard.engine._refs import split_ref_range
 from diffguard.engine._types import Reference
-from diffguard.engine.deps import find_references
-from diffguard.engine.signatures import classify_signature_change
 from diffguard.schema import DiffGuardOutput, FileChange, SymbolChange
 
 
@@ -39,25 +36,26 @@ def categorize_change(sc: SymbolChange) -> str:
     if sc.kind.endswith("_removed"):
         return "SYMBOL REMOVED"
     if sc.kind == "moved":
-        return "SYMBOL MOVED"
-    if sc.before_signature and sc.after_signature:
-        return classify_signature_change(sc.before_signature, sc.after_signature)
+        return sc.category or "POSSIBLE SYMBOL MOVE"
+    if sc.category:
+        return sc.category
     return "CHANGED"
 
 
 @dataclass(frozen=True)
 class Finding:
-    """A high-signal change plus the callers it affects.
+    """A high-signal change plus unresolved syntactic reference evidence.
 
-    ``prod_callers`` and ``test_callers`` hold *call*-context references only,
-    split by whether the calling file looks like a test.
+    References are name matches in explicit AST contexts. They are split by
+    whether the containing file looks like a test, but they do not prove symbol
+    ownership.
     """
 
     file: FileChange
     change: SymbolChange
     category: str
-    prod_callers: list[Reference] = field(default_factory=list)
-    test_callers: list[Reference] = field(default_factory=list)
+    prod_references: list[Reference] = field(default_factory=list)
+    test_references: list[Reference] = field(default_factory=list)
 
     @property
     def path(self) -> str:
@@ -65,36 +63,9 @@ class Finding:
         return self.file.path
 
 
-def scan_dependencies(
-    output: DiffGuardOutput,
-    ref_range: str,
-    repo_path: str,
-) -> list[Reference] | None:
-    """Find external callers of every changed symbol, or None if there are none.
-
-    Composes a pipeline result into the caller-reference scan: collects the
-    changed symbols/files, resolves the "after" ref, and delegates the actual
-    tree-sitter scanning to :func:`~diffguard.engine.deps.find_references`. This
-    is the other half of the ``DiffGuardOutput`` → ``Finding`` flow that
-    :func:`extract_findings` completes, so it lives in the domain layer rather
-    than the CLI.
-    """
-    changed_symbols: list[str] = []
-    changed_files: set[str] = set()
-    for fc in output.files:
-        changed_files.add(fc.path)
-        changed_symbols.extend(sc.name for sc in fc.changes)
-
-    if not changed_symbols:
-        return None
-
-    _, after_ref = split_ref_range(ref_range)
-    return find_references(
-        repo_path=repo_path,
-        changed_symbols=changed_symbols,
-        ref=after_ref,
-        changed_files=changed_files,
-    )
+def changed_symbol_names(output: DiffGuardOutput) -> list[str]:
+    """Collect changed symbol names for the orchestration layer."""
+    return [sc.name for fc in output.files for sc in fc.changes]
 
 
 def has_high_signal(output: DiffGuardOutput) -> bool:
@@ -113,27 +84,25 @@ def extract_findings(
 ) -> list[Finding]:
     """Extract all high-signal findings from a pipeline result.
 
-    Each finding is annotated with its production and test callers, drawn from
-    *dep_refs* (call-context references only).
+    Each finding is annotated with syntactic production and test references.
     """
-    calls_by_symbol: dict[str, list[Reference]] = {}
+    refs_by_symbol: dict[str, list[Reference]] = {}
     for ref in dep_refs or []:
-        if ref.context == "call":
-            calls_by_symbol.setdefault(ref.symbol_name, []).append(ref)
+        refs_by_symbol.setdefault(ref.symbol_name, []).append(ref)
 
     findings: list[Finding] = []
     for fc in output.files:
         for sc in fc.changes:
             if not is_high_signal(sc):
                 continue
-            calls = calls_by_symbol.get(sc.name, [])
+            references = refs_by_symbol.get(sc.name, [])
             findings.append(
                 Finding(
                     file=fc,
                     change=sc,
                     category=categorize_change(sc),
-                    prod_callers=[r for r in calls if not is_test_file(r.file_path)],
-                    test_callers=[r for r in calls if is_test_file(r.file_path)],
+                    prod_references=[ref for ref in references if not is_test_file(ref.file_path)],
+                    test_references=[ref for ref in references if is_test_file(ref.file_path)],
                 )
             )
     return findings

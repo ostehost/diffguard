@@ -6,6 +6,7 @@ access; :mod:`diffguard.git` produces the text this module consumes.
 
 from __future__ import annotations
 
+import posixpath
 import re
 from dataclasses import dataclass, field
 from typing import Literal
@@ -89,6 +90,97 @@ class FileDiff:
 _HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)?$")
 
 
+def _decode_git_quoted_path(token: str) -> str:
+    """Decode one C-quoted path token from a Git patch header."""
+    if not (token.startswith('"') and token.endswith('"')):
+        return token
+
+    escapes = {
+        "a": "\a",
+        "b": "\b",
+        "t": "\t",
+        "n": "\n",
+        "v": "\v",
+        "f": "\f",
+        "r": "\r",
+        "\\": "\\",
+        '"': '"',
+    }
+    raw = token[1:-1]
+    decoded: list[str] = []
+    index = 0
+    while index < len(raw):
+        if raw[index] != "\\":
+            decoded.append(raw[index])
+            index += 1
+            continue
+        if index + 1 >= len(raw):
+            raise ValueError("Incomplete Git path escape")
+
+        if raw[index + 1] in "01234567":
+            octets = bytearray()
+            while index + 1 < len(raw) and raw[index] == "\\" and raw[index + 1] in "01234567":
+                end = index + 1
+                while end < len(raw) and end < index + 4 and raw[end] in "01234567":
+                    end += 1
+                octets.append(int(raw[index + 1 : end], 8))
+                index = end
+            decoded.append(octets.decode("utf-8", errors="surrogateescape"))
+            continue
+
+        escaped = escapes.get(raw[index + 1])
+        if escaped is None:
+            raise ValueError(f"Unsupported Git path escape: \\{raw[index + 1]}")
+        decoded.append(escaped)
+        index += 2
+    return "".join(decoded)
+
+
+def _parse_git_header_paths(line: str) -> tuple[str, str] | None:
+    """Return old/new paths from a no-renames ``diff --git`` header."""
+    prefix = "diff --git "
+    if not line.startswith(prefix):
+        return None
+    payload = line[len(prefix) :]
+    if payload.startswith('"'):
+        escaped = False
+        closing = -1
+        for index, char in enumerate(payload[1:], start=1):
+            if char == '"' and not escaped:
+                closing = index
+                break
+            escaped = char == "\\" and not escaped
+            if char != "\\":
+                escaped = False
+        if closing == -1 or closing + 2 > len(payload):
+            return None
+        first = payload[: closing + 1]
+        second = payload[closing + 1 :].lstrip()
+        try:
+            old_token = _decode_git_quoted_path(first)
+            new_token = _decode_git_quoted_path(second)
+        except (SyntaxError, ValueError):
+            return None
+        if old_token.startswith("a/") and new_token.startswith("b/"):
+            return old_token[2:], new_token[2:]
+        return None
+
+    if not payload.startswith("a/"):
+        return None
+    candidates: list[tuple[str, str]] = []
+    search_from = 0
+    while True:
+        separator = payload.find(" b/", search_from)
+        if separator == -1:
+            break
+        candidates.append((payload[2:separator], payload[separator + 3 :]))
+        search_from = separator + 1
+    for old_path, new_path in candidates:
+        if old_path == new_path:
+            return old_path, new_path
+    return candidates[-1] if candidates else None
+
+
 def is_generated(path: str, patterns: tuple[str, ...] = DEFAULT_GENERATED_PATTERNS) -> bool:
     """Check whether a file path matches generated/vendored patterns."""
     for pat in patterns:
@@ -104,6 +196,53 @@ def is_generated(path: str, patterns: tuple[str, ...] = DEFAULT_GENERATED_PATTER
     return False
 
 
+def _normalized_path_key(path: str) -> str:
+    """Return a lexical key for comparing repository-relative Git paths."""
+    return posixpath.normpath(path) if path else ""
+
+
+def _coalesce_recreated_files(files: list[FileDiff]) -> list[FileDiff]:
+    """Reconcile one split removal/addition for a path into a modification.
+
+    ``get_worktree_diff`` appends one no-index patch per untracked file after
+    Git's tracked-file patch. A tracked deletion that is recreated as an
+    untracked file can therefore be separated from its addition by arbitrary
+    records. Only an unambiguous pair is folded: exactly two records for the
+    normalized path, with a well-formed removal preceding a well-formed
+    addition. Other duplicate-path sequences are preserved as supplied.
+    """
+    records_by_path: dict[str, list[tuple[int, FileDiff]]] = {}
+    for index, file_diff in enumerate(files):
+        key = _normalized_path_key(file_diff.path)
+        if key:
+            records_by_path.setdefault(key, []).append((index, file_diff))
+
+    additions_to_remove: set[int] = set()
+    for records in records_by_path.values():
+        if len(records) != 2:
+            continue
+        (removed_index, removed), (added_index, added) = records
+        if not (
+            removed_index < added_index
+            and removed.change_type == "removed"
+            and removed.old_path is not None
+            and removed.new_path is None
+            and added.change_type == "added"
+            and added.old_path is None
+            and added.new_path is not None
+        ):
+            continue
+
+        removed.new_path = added.new_path
+        removed.change_type = "modified"
+        removed.binary = removed.binary or added.binary
+        removed.generated = removed.generated or added.generated
+        removed.hunks.extend(added.hunks)
+        additions_to_remove.add(added_index)
+
+    return [file_diff for index, file_diff in enumerate(files) if index not in additions_to_remove]
+
+
 def parse_diff(
     diff_text: str,
     generated_patterns: tuple[str, ...] = DEFAULT_GENERATED_PATTERNS,
@@ -116,13 +255,14 @@ def parse_diff(
     i = 0
 
     while i < len(lines):
-        match = re.match(r"^diff --git a/(.*) b/(.*)$", lines[i])
-        if match is None:
+        paths = _parse_git_header_paths(lines[i])
+        if paths is None:
             i += 1
             continue
 
+        header_old_path, header_new_path = paths
         old_path, new_path, change_type, is_binary, i = _parse_file_header(
-            lines, i + 1, match.group(1), match.group(2)
+            lines, i + 1, header_old_path, header_new_path
         )
 
         canonical = new_path or old_path or ""
@@ -137,7 +277,11 @@ def parse_diff(
             i = _parse_hunks(lines, i, file_diff)
         files.append(file_diff)
 
-    return files
+    # Git uses split delete/add records for mode changes, and the worktree
+    # assembler can produce the same shape non-adjacently when a staged
+    # deletion is recreated as an untracked file. Reconcile after parsing so
+    # unrelated intervening records retain their order.
+    return _coalesce_recreated_files(files)
 
 
 def _parse_file_header(

@@ -323,3 +323,159 @@ index abc..def 100644
         assert not any(ln.origin == " " and ln.content == "" for ln in hunk.lines)
         assert files[0].additions == 1
         assert files[0].deletions == 1
+
+
+class TestUnusualPathsAndModes:
+    def test_header_only_empty_addition_preserves_c_quoted_path_bytes(self) -> None:
+        diff = (
+            'diff --git "a/odd/tab\\011line\\012quote\\042slash\\134-\\377.py" '
+            '"b/odd/tab\\011line\\012quote\\042slash\\134-\\377.py"\n'
+            "new file mode 100644\n"
+        )
+        expected = b'odd/tab\tline\nquote"slash\\-\xff.py'.decode("utf-8", errors="surrogateescape")
+
+        files = parse_diff(diff)
+
+        assert len(files) == 1
+        assert files[0].old_path is None
+        assert files[0].new_path == expected
+        assert files[0].change_type == "added"
+        assert files[0].additions == 0
+        assert files[0].deletions == 0
+        assert files[0].hunks == []
+
+    def test_git_quoted_utf8_path(self) -> None:
+        diff = """\
+diff --git \"a/caf\\303\\251.py\" \"b/caf\\303\\251.py\"
+--- \"a/caf\\303\\251.py\"
++++ \"b/caf\\303\\251.py\"
+@@ -1 +1 @@
+-def f(value=1): pass
++def f(value): pass
+"""
+
+        files = parse_diff(diff)
+
+        assert len(files) == 1
+        assert files[0].path == "café.py"
+
+    def test_git_quoted_path_preserves_literal_unicode_with_escape(self) -> None:
+        diff = """\
+diff --git \"a/café\\t.py\" \"b/café\\t.py\"
+--- \"a/café\\t.py\"
++++ \"b/café\\t.py\"
+@@ -1 +1 @@
+-def f(value=1): pass
++def f(value): pass
+"""
+
+        files = parse_diff(diff)
+
+        assert len(files) == 1
+        assert files[0].path == "café\t.py"
+
+    def test_unquoted_path_containing_b_prefix_separator(self) -> None:
+        diff = """\
+diff --git a/foo b/bar.py b/foo b/bar.py
+--- a/foo b/bar.py
++++ b/foo b/bar.py
+@@ -1 +1 @@
+-old
++new
+"""
+
+        files = parse_diff(diff)
+
+        assert len(files) == 1
+        assert files[0].path == "foo b/bar.py"
+
+    def test_file_to_symlink_mode_change_is_one_modified_file(self) -> None:
+        diff = """\
+diff --git a/lib.py b/lib.py
+deleted file mode 100644
+index 1111111..0000000
+--- a/lib.py
++++ /dev/null
+@@ -1 +0,0 @@
+-def helper(): pass
+diff --git a/lib.py b/lib.py
+new file mode 120000
+index 0000000..2222222
+--- /dev/null
++++ b/lib.py
+@@ -0,0 +1 @@
++target.txt
+"""
+
+        files = parse_diff(diff)
+
+        assert len(files) == 1
+        assert files[0].old_path == "lib.py"
+        assert files[0].new_path == "lib.py"
+        assert files[0].change_type == "modified"
+        assert files[0].deletions == 1
+        assert files[0].additions == 1
+
+    def test_nonadjacent_recreation_is_coalesced_by_normalized_path(self) -> None:
+        diff = """\
+diff --git a/lib.py b/lib.py
+deleted file mode 100644
+--- a/lib.py
++++ /dev/null
+@@ -1 +0,0 @@
+-def helper(): pass
+diff --git a/notes.md b/notes.md
+--- a/notes.md
++++ b/notes.md
+@@ -1 +1 @@
+-old
++new
+diff --git a/scratch.txt b/scratch.txt
+new file mode 100644
+--- /dev/null
++++ b/scratch.txt
+@@ -0,0 +1 @@
++scratch
+diff --git a/./lib.py b/./lib.py
+new file mode 100644
+--- /dev/null
++++ b/./lib.py
+@@ -0,0 +1 @@
++def helper(value): pass
+"""
+
+        files = parse_diff(diff)
+
+        assert [file.path for file in files] == ["./lib.py", "notes.md", "scratch.txt"]
+        recreated = files[0]
+        assert recreated.old_path == "lib.py"
+        assert recreated.new_path == "./lib.py"
+        assert recreated.change_type == "modified"
+        assert recreated.deletions == 1
+        assert recreated.additions == 1
+
+    def test_ambiguous_duplicate_path_records_are_not_coalesced(self) -> None:
+        diff = """\
+diff --git a/lib.py b/lib.py
+deleted file mode 100644
+--- a/lib.py
++++ /dev/null
+@@ -1 +0,0 @@
+-old
+diff --git a/lib.py b/lib.py
+new file mode 100644
+--- /dev/null
++++ b/lib.py
+@@ -0,0 +1 @@
++first
+diff --git a/./lib.py b/./lib.py
+new file mode 100644
+--- /dev/null
++++ b/./lib.py
+@@ -0,0 +1 @@
++second
+"""
+
+        files = parse_diff(diff)
+
+        assert [file.change_type for file in files] == ["removed", "added", "added"]

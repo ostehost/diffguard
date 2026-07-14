@@ -53,3 +53,34 @@ func Divide(a int, b int) (int, error) {
     sym = result.symbols[0]
     assert sym.name == "Divide"
     assert "(int, error)" in sym.signature
+
+
+def test_type_parameters_are_part_of_function_signatures() -> None:
+    source = """\
+package main
+
+func Identity[T ~string](value T) T {
+    return value
+}
+"""
+    result = parse_file(source, "go")
+
+    assert len(result.symbols) == 1
+    assert result.symbols[0].signature == "func Identity[T ~string](value T) T"
+
+
+def test_generic_receiver_syntax_and_parent_are_preserved() -> None:
+    source = """\
+package main
+
+type Box[T any] struct { value T }
+
+func (box *Box[T]) Get() T {
+    return box.value
+}
+"""
+    result = parse_file(source, "go")
+
+    assert len(result.symbols) == 1
+    assert result.symbols[0].signature == "func (box *Box[T]) Get() T"
+    assert result.symbols[0].parent == "Box"

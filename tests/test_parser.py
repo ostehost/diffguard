@@ -130,6 +130,21 @@ class Calculator {
     assert "multiply" in names
 
 
+def test_parse_tsx_uses_path_specific_grammar() -> None:
+    source = """\
+export function Widget(label: string) {
+    return <button aria-label={label}>{label}</button>;
+}
+"""
+
+    tsx_result = parse_file(source, "typescript", file_path="component.tsx")
+    ts_result = parse_file(source, "typescript", file_path="component.ts")
+
+    assert tsx_result.parse_error is False
+    assert [(symbol.name, symbol.kind) for symbol in tsx_result.symbols] == [("Widget", "function")]
+    assert ts_result.parse_error is True
+
+
 def test_parse_go() -> None:
     source = """\
 package main

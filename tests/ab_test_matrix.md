@@ -1,6 +1,11 @@
-# DiffGuard A/B Test Matrix — Selective Trigger Validation
+# Historical DiffGuard A/B Scenario Matrix
 
-## Goal
+This file records exploratory scenarios from the prototype. It is not a current, hermetic
+validation suite. The exact caller counts below came from name-only scanning and are retained only
+as historical inputs; they are not validated ownership claims. Current reproducible metrics come
+from `just validate-corpus`.
+
+## Historical goal
 Validate that selective trigger achieves:
 - ≥80% precision (when it speaks, it's useful)
 - ≥60% silence rate (doesn't fire on noise)
@@ -11,10 +16,10 @@ Validate that selective trigger achieves:
 
 | # | Repo | Ref Range | Description | Expected Signal |
 |---|------|-----------|-------------|-----------------|
-| 1 | flask | eb58d862..5880befc | redirect 302→303 default change | DEFAULT VALUE CHANGED + 5 callers |
-| 2 | flask | 6a649690~1..6a649690 | pass context through dispatch (#5818) | 12 BREAKING sig changes + callers |
-| 3 | flask | c2705ffd~1..c2705ffd | merge app and request context | BREAKING return type + sig changes |
-| 4 | pydantic | 950a1c9e~1..950a1c9e | dataclass constructor fix | Modified symbol + caller |
+| 1 | flask | eb58d862..5880befc | redirect 302→303 default change | Default-value syntax change; historical scan reported 5 name matches |
+| 2 | flask | 6a649690~1..6a649690 | pass context through dispatch (#5818) | Signature changes; historical scan reported name matches |
+| 3 | flask | c2705ffd~1..c2705ffd | merge app and request context | Return/signature syntax changes |
+| 4 | pydantic | 950a1c9e~1..950a1c9e | dataclass constructor fix | Modified declaration; historical name match |
 | 5 | diffguard | 11efd59..f549226 | Phase 4 CLI packaging | Signature changes (non-breaking kwargs) |
 
 ### Expected: SILENT (should NOT trigger)
@@ -29,7 +34,7 @@ Validate that selective trigger achieves:
 | 11 | pydantic | ccd2aad8~1..ccd2aad8 | Fix serialization | Body changes only |
 | 12 | react-test-app | HEAD~1..HEAD | Feature restructure | Additions/moves, no sig change |
 
-## Success Criteria
+## Historical success criteria (not current validation)
 - Cases 1-4: trigger with actionable output + dependency context
 - Case 5: trigger but mark as backward-compatible
 - Cases 6-12: silent (no output)

@@ -24,6 +24,13 @@ def _sym(
     )
 
 
+def _unmatched(
+    files: dict[str, list[Symbol]],
+    language: str = "python",
+) -> dict[str, tuple[str, list[Symbol]]]:
+    return {path: (language, symbols) for path, symbols in files.items()}
+
+
 class TestMatchSymbols:
     def test_identical_lists(self) -> None:
         syms = [_sym(name="a"), _sym(name="b", signature="def b()")]
@@ -92,8 +99,8 @@ class TestMatchCrossFile:
         sym_old = _sym(name="helper", body_hash="h1")
         sym_new = _sym(name="helper", body_hash="h2")
         result = match_cross_file(
-            {"old.py": [sym_old]},
-            {"new.py": [sym_new]},
+            _unmatched({"old.py": [sym_old]}),
+            _unmatched({"new.py": [sym_new]}),
         )
         assert len(result) == 1
         assert result[0].file_from == "old.py"
@@ -105,8 +112,8 @@ class TestMatchCrossFile:
         old_sym = _sym(name="helper", signature="def helper()", body_hash="aaa")
         new_sym = _sym(name="helper", signature="def helper(x: int)", body_hash="bbb")
         result = match_cross_file(
-            {"utils.py": [old_sym]},
-            {"api.py": [new_sym]},
+            _unmatched({"utils.py": [old_sym]}),
+            _unmatched({"api.py": [new_sym]}),
         )
         assert len(result) == 0, "Different signature AND body_hash should not match as move"
 
@@ -115,25 +122,128 @@ class TestMatchCrossFile:
         old_sym = _sym(name="helper", signature="def helper(x: int)", body_hash="aaa")
         new_sym = _sym(name="helper", signature="def helper(x: int)", body_hash="bbb")
         result = match_cross_file(
-            {"utils.py": [old_sym]},
-            {"api.py": [new_sym]},
+            _unmatched({"utils.py": [old_sym]}),
+            _unmatched({"api.py": [new_sym]}),
         )
         assert len(result) == 1
 
     def test_cross_file_move_same_body_hash(self) -> None:
-        """Move detected when body_hash matches even if signature differs."""
+        """A unique body-only match preserves a simultaneous signature change."""
         old_sym = _sym(name="helper", signature="def helper()", body_hash="same")
         new_sym = _sym(name="helper", signature="def helper() -> None", body_hash="same")
         result = match_cross_file(
-            {"utils.py": [old_sym]},
-            {"api.py": [new_sym]},
+            _unmatched({"utils.py": [old_sym]}),
+            _unmatched({"api.py": [new_sym]}),
         )
         assert len(result) == 1
+        assert result[0].old == old_sym
+        assert result[0].new == new_sym
+
+    def test_cross_file_does_not_match_across_languages(self) -> None:
+        """Even unique body evidence cannot identify a move across languages."""
+        old_sym = _sym(name="helper", signature="func helper()", body_hash="same")
+        new_sym = _sym(name="helper", signature="function helper()", body_hash="same")
+
+        result = match_cross_file(
+            _unmatched({"old.go": [old_sym]}, language="go"),
+            _unmatched({"new.js": [new_sym]}, language="javascript"),
+        )
+
+        assert result == []
+
+    def test_cross_file_prefers_exact_signatures_before_body_hashes(self) -> None:
+        """An earlier body match must not steal a later exact-signature match."""
+        old_a = _sym(signature="def foo(a)", body_hash="same")
+        old_b = _sym(signature="def foo(b)", body_hash="same")
+        new_b = _sym(signature="def foo(b)", body_hash="same")
+        new_a = _sym(signature="def foo(a)", body_hash="same")
+
+        result = match_cross_file(
+            _unmatched({"old_a.py": [old_a], "old_b.py": [old_b]}),
+            _unmatched({"new_b.py": [new_b], "new_a.py": [new_a]}),
+        )
+
+        assert {(match.file_from, match.file_to) for match in result} == {
+            ("old_a.py", "new_a.py"),
+            ("old_b.py", "new_b.py"),
+        }
+        assert all(
+            match.old is not None
+            and match.new is not None
+            and match.old.signature == match.new.signature
+            for match in result
+        )
+
+    def test_cross_file_does_not_guess_ambiguous_body_only_moves(self) -> None:
+        """Duplicate body evidence alone cannot establish one-to-one move identity."""
+        result = match_cross_file(
+            _unmatched(
+                {
+                    "old_a.py": [_sym(signature="def foo(a)", body_hash="same")],
+                    "old_b.py": [_sym(signature="def foo(b)", body_hash="same")],
+                }
+            ),
+            _unmatched(
+                {
+                    "new_c.py": [_sym(signature="def foo(c)", body_hash="same")],
+                    "new_d.py": [_sym(signature="def foo(d)", body_hash="same")],
+                }
+            ),
+        )
+
+        assert result == []
+
+    def test_cross_file_uses_bodies_to_disambiguate_duplicate_signatures(self) -> None:
+        """Matching bodies recover source identity when equal signatures are reordered."""
+        result = match_cross_file(
+            _unmatched(
+                {
+                    "old_a.py": [_sym(signature="def foo(x)", body_hash="body-a")],
+                    "old_b.py": [_sym(signature="def foo(x)", body_hash="body-b")],
+                }
+            ),
+            _unmatched(
+                {
+                    "new_b.py": [_sym(signature="def foo(x)", body_hash="body-b")],
+                    "new_a.py": [_sym(signature="def foo(x)", body_hash="body-a")],
+                }
+            ),
+        )
+
+        assert {(match.file_from, match.file_to) for match in result} == {
+            ("old_a.py", "new_a.py"),
+            ("old_b.py", "new_b.py"),
+        }
+        assert all(
+            match.old is not None
+            and match.new is not None
+            and match.old.body_hash == match.new.body_hash
+            for match in result
+        )
+
+    def test_cross_file_does_not_guess_fully_identical_duplicate_moves(self) -> None:
+        """Equal signatures and bodies still cannot prove duplicate source paths."""
+        result = match_cross_file(
+            _unmatched(
+                {
+                    "old_a.py": [_sym(signature="def foo(x)", body_hash="same")],
+                    "old_b.py": [_sym(signature="def foo(x)", body_hash="same")],
+                }
+            ),
+            _unmatched(
+                {
+                    "new_1.py": [_sym(signature="def foo(x)", body_hash="same")],
+                    "new_2.py": [_sym(signature="def foo(x)", body_hash="same")],
+                }
+            ),
+        )
+
+        assert result == []
 
     def test_no_cross_file_same_file(self) -> None:
         sym = _sym(name="helper")
         result = match_cross_file(
-            {"a.py": [sym]},
-            {"a.py": [sym]},
+            _unmatched({"a.py": [sym]}),
+            _unmatched({"a.py": [sym]}),
         )
         assert len(result) == 0

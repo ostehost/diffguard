@@ -7,29 +7,60 @@ import time
 from typing import Callable
 
 from diffguard.engine._refs import split_ref_range
-from diffguard.engine._types import Symbol
+from diffguard.engine._types import MatchedSymbol, Symbol
 from diffguard.engine.classifier import classify_changes
-from diffguard.engine.matcher import (
-    MatchedSymbol,
-    UnmatchedByFile,
-    match_cross_file,
-    match_symbols,
-)
+from diffguard.engine.matcher import UnmatchedByFile, match_cross_file, match_symbols
 from diffguard.engine.parser import parse_file
+from diffguard.engine.signatures import compare_signatures
 from diffguard.engine.summarizer import build_summary, build_tiered_summary
 from diffguard.diff import FileDiff, parse_diff
 from diffguard.languages import detect_language
 from diffguard.schema import (
     DiffStats,
-    FileChange,
     DiffGuardOutput,
+    FileChange,
     Meta,
+    SymbolChange,
 )
 
 logger = logging.getLogger(__name__)
 
 FileContentProvider = Callable[[str, str], str | None]
 """(ref, path) -> source text or None."""
+
+_INCOMPLETE_DIFF_WARNING = (
+    "diff contains file headers that could not be parsed — analysis incomplete"
+)
+
+
+def _split_diff_records(diff_text: str) -> list[str]:
+    """Return each raw ``diff --git`` record, excluding leading preamble."""
+    records: list[str] = []
+    current: list[str] = []
+    for line in diff_text.splitlines(keepends=True):
+        if line.startswith("diff --git "):
+            if current:
+                records.append("".join(current))
+            current = [line]
+        elif current:
+            current.append(line)
+    if current:
+        records.append("".join(current))
+    return records
+
+
+def _has_unparsed_diff_records(diff_text: str, *, skip_generated: bool) -> bool:
+    """Detect raw file records discarded by the tolerant diff parser.
+
+    Parsing each record independently preserves valid duplicate headers used by
+    mode changes and worktree recreation while still exposing a malformed
+    record beside otherwise valid files.
+    """
+    records = _split_diff_records(diff_text)
+    parsed_records = sum(
+        len(parse_diff(record, skip_generated=skip_generated)) for record in records
+    )
+    return parsed_records != len(records)
 
 
 def run_pipeline(
@@ -58,13 +89,32 @@ def run_pipeline(
     file_diffs = parse_diff(diff_text, skip_generated=skip_generated)
     file_changes: list[FileChange] = []
     warnings: list[str] = []
+    if _has_unparsed_diff_records(diff_text, skip_generated=skip_generated):
+        warnings.append(_INCOMPLETE_DIFF_WARNING)
 
     # For cross-file move detection
     unmatched_old: UnmatchedByFile = {}
     unmatched_new: UnmatchedByFile = {}
 
+    # A path can occur more than once in an assembled worktree patch (for
+    # example, malformed or otherwise ambiguous split records).  Path alone
+    # cannot identify which FileChange owns a possible move in that case, so
+    # retain every record as classified and exclude the ambiguous path from
+    # cross-file reconciliation.
+    path_counts: dict[str, int] = {}
+    for file_diff in file_diffs:
+        path_counts[file_diff.path] = path_counts.get(file_diff.path, 0) + 1
+
     for fd in file_diffs:
-        fc = _process_file(fd, ref_range, get_content, unmatched_old, unmatched_new, warnings)
+        fc = _process_file(
+            fd,
+            ref_range,
+            get_content,
+            unmatched_old,
+            unmatched_new,
+            warnings,
+            collect_move_candidates=path_counts[fd.path] == 1,
+        )
         file_changes.append(fc)
 
     # Cross-file moves
@@ -111,6 +161,8 @@ def _process_file(
     unmatched_old: UnmatchedByFile,
     unmatched_new: UnmatchedByFile,
     warnings: list[str],
+    *,
+    collect_move_candidates: bool,
 ) -> FileChange:
     """Process a single FileDiff into a FileChange."""
     path = fd.path
@@ -153,29 +205,41 @@ def _process_file(
     parse_error = False
 
     if old_source is not None:
-        pr = parse_file(old_source, language)
+        pr = parse_file(old_source, language, file_path=fd.old_path)
         if pr.parse_error:
             parse_error = True
         old_symbols = pr.symbols
 
     if new_source is not None:
-        pr = parse_file(new_source, language)
+        pr = parse_file(new_source, language, file_path=fd.new_path)
         if pr.parse_error:
             parse_error = True
         new_symbols = pr.symbols
 
+    if parse_error:
+        warnings.append(f"{path}: parse gap — symbol analysis skipped")
+        return FileChange(
+            path=path,
+            language=language,
+            change_type=fd.change_type,
+            parse_error=True,
+        )
+
     matches = match_symbols(old_symbols, new_symbols)
-    changes = classify_changes(matches)
+    changes = classify_changes(
+        matches,
+        lambda old, new: compare_signatures(old, new, language),
+    )
 
     # Collect unmatched for cross-file move detection
     matched_old_ids = {id(m.old) for m in matches if m.old and m.new}
     matched_new_ids = {id(m.new) for m in matches if m.old and m.new}
     um_old = [s for s in old_symbols if id(s) not in matched_old_ids]
     um_new = [s for s in new_symbols if id(s) not in matched_new_ids]
-    if um_old:
-        unmatched_old[path] = um_old
-    if um_new:
-        unmatched_new[path] = um_new
+    if collect_move_candidates and um_old:
+        unmatched_old[path] = (language, um_old)
+    if collect_move_candidates and um_new:
+        unmatched_new[path] = (language, um_new)
 
     return FileChange(
         path=path,
@@ -191,30 +255,67 @@ def _apply_moves(
     file_changes: list[FileChange],
 ) -> None:
     """Inject cross-file move changes into file_changes and remove stale add/remove."""
-    move_changes = classify_changes(moves)
-    # Build a mapping from move change name to source/destination paths
-    move_paths = {
-        m.old.name: (m.file_from, m.file_to) for m in moves if m.old and m.file_from and m.file_to
-    }
-    # Index file_changes by path
-    fc_map = {fc.path: fc for fc in file_changes}
-    for mc in move_changes:
-        if mc.kind != "moved":
+    file_changes_by_path: dict[str, list[FileChange]] = {}
+    for file_change in file_changes:
+        file_changes_by_path.setdefault(file_change.path, []).append(file_change)
+    for move in moves:
+        if move.old is None or move.new is None or move.file_from is None or move.file_to is None:
             continue
-        paths = move_paths.get(mc.name)
-        if not paths:
+        source_candidates = file_changes_by_path.get(move.file_from, [])
+        destination_candidates = file_changes_by_path.get(move.file_to, [])
+        if len(source_candidates) != 1 or len(destination_candidates) != 1:
             continue
-        src_path, dst_path = paths
-        # Remove stale added/removed only from source and destination files
-        for p in (src_path, dst_path):
-            fc = fc_map.get(p)
-            if fc is not None:
-                fc.changes = [
-                    c
-                    for c in fc.changes
-                    if not (c.name == mc.name and c.kind.endswith(("_added", "_removed")))
-                ]
-        # Attach move change to the destination file
-        dst_fc = fc_map.get(dst_path)
-        if dst_fc is not None:
-            dst_fc.changes.append(mc)
+        src_fc = source_candidates[0]
+        dst_fc = destination_candidates[0]
+        if src_fc.language != dst_fc.language:
+            continue
+        move_changes = classify_changes(
+            [move],
+            lambda old, new: compare_signatures(old, new, dst_fc.language or "unknown"),
+        )
+        if not move_changes:
+            continue
+        move_change = move_changes[0]
+        src_fc.changes = _remove_one_symbol_change(src_fc.changes, move.old, "_removed")
+        dst_fc.changes = _remove_one_symbol_change(dst_fc.changes, move.new, "_added")
+        dst_fc.changes.append(move_change)
+
+        # A body-equal move can still change its signature. Preserve that
+        # contract finding instead of letting the move classification hide it.
+        if move.old.signature != move.new.signature:
+            signature_changes = classify_changes(
+                [MatchedSymbol(old=move.old, new=move.new)],
+                lambda old, new: compare_signatures(old, new, dst_fc.language or "unknown"),
+            )
+            dst_fc.changes.extend(signature_changes)
+
+
+def _remove_one_symbol_change(
+    changes: list[SymbolChange],
+    symbol: Symbol,
+    kind_suffix: str,
+) -> list[SymbolChange]:
+    """Remove the one add/remove record represented by *symbol*.
+
+    Duplicate declarations can legally share a name within one file.  Match
+    the classifier's signature and source line first so reconciling one move
+    cannot erase an unrelated same-named addition or removal.  The name-only
+    fallback keeps this helper tolerant of older/manually built model values
+    that do not carry signature/line evidence, while still removing at most
+    one record.
+    """
+    matching_index: int | None = None
+    fallback_index: int | None = None
+    for index, change in enumerate(changes):
+        if change.name != symbol.name or not change.kind.endswith(kind_suffix):
+            continue
+        if fallback_index is None:
+            fallback_index = index
+        if change.signature == symbol.signature and change.line == symbol.start_line:
+            matching_index = index
+            break
+
+    remove_index = matching_index if matching_index is not None else fallback_index
+    if remove_index is None:
+        return changes
+    return changes[:remove_index] + changes[remove_index + 1 :]

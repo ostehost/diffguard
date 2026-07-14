@@ -34,11 +34,13 @@ def _extract_function(
     if name_node is None:
         return
     name = node_text(name_node)
+    type_params = node.child_by_field_name("type_parameters")
+    generic = node_text(type_params) if type_params else ""
     params_node = node.child_by_field_name("parameters")
     params = node_text(params_node) if params_node else "()"
     result_node = node.child_by_field_name("result")
     result = f" {node_text(result_node)}" if result_node else ""
-    signature = f"func {name}{params}{result}"
+    signature = f"func {name}{generic}{params}{result}"
     body_node = node.child_by_field_name("body")
     body_text = node_text(body_node) if body_node else ""
 
@@ -63,13 +65,15 @@ def _extract_method(
     if name_node is None:
         return
     name = node_text(name_node)
+    type_params = node.child_by_field_name("type_parameters")
+    generic = node_text(type_params) if type_params else ""
     receiver_node = node.child_by_field_name("receiver")
     receiver = node_text(receiver_node) if receiver_node else ""
     params_node = node.child_by_field_name("parameters")
     params = node_text(params_node) if params_node else "()"
     result_node = node.child_by_field_name("result")
     result = f" {node_text(result_node)}" if result_node else ""
-    signature = f"func {receiver} {name}{params}{result}"
+    signature = f"func {receiver} {name}{generic}{params}{result}"
     body_node = node.child_by_field_name("body")
     body_text = node_text(body_node) if body_node else ""
     parent_type = _extract_receiver_type(receiver_node) if receiver_node else None
@@ -91,11 +95,16 @@ def _extract_receiver_type(receiver_node: tree_sitter.Node) -> str | None:
     """Extract the type name from a receiver parameter list."""
     for child in receiver_node.children:
         if child.type == "parameter_declaration":
-            for tc in child.children:
-                if tc.type == "type_identifier":
-                    return node_text(tc)
-                if tc.type == "pointer_type":
-                    for ptc in tc.children:
-                        if ptc.type == "type_identifier":
-                            return node_text(ptc)
+            return _first_type_identifier(child)
+    return None
+
+
+def _first_type_identifier(node: tree_sitter.Node) -> str | None:
+    """Return the receiver's base type, including through pointer/generic syntax."""
+    if node.type == "type_identifier":
+        return node_text(node)
+    for child in node.children:
+        type_name = _first_type_identifier(child)
+        if type_name is not None:
+            return type_name
     return None

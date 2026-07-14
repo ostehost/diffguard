@@ -1,0 +1,115 @@
+[
+  {
+    "id": "py-required-parameter-added",
+    "language": "python",
+    "old": "def contract(a):\n    return a\n",
+    "new": "def contract(a, b):\n    return a\n",
+    "expected_rule_id": "DG102"
+  },
+  {
+    "id": "py-parameter-removed",
+    "language": "python",
+    "old": "def contract(a, b):\n    return a\n",
+    "new": "def contract(a):\n    return a\n",
+    "expected_rule_id": "DG101"
+  },
+  {
+    "id": "py-parameters-reordered",
+    "language": "python",
+    "old": "def contract(a, b):\n    return a\n",
+    "new": "def contract(b, a):\n    return a\n",
+    "expected_rule_id": "DG103"
+  },
+  {
+    "id": "py-default-removed",
+    "language": "python",
+    "old": "def contract(a=1):\n    return a\n",
+    "new": "def contract(a):\n    return a\n",
+    "expected_rule_id": "DG104"
+  },
+  {
+    "id": "py-default-changed",
+    "language": "python",
+    "old": "def contract(a=1):\n    return a\n",
+    "new": "def contract(a=2):\n    return a\n",
+    "expected_rule_id": "DG105"
+  },
+  {
+    "id": "py-optional-parameter-added",
+    "language": "python",
+    "old": "def contract(a):\n    return a\n",
+    "new": "def contract(a, b=1):\n    return a\n",
+    "expected_rule_id": "DG106"
+  },
+  {
+    "id": "py-annotation-changed",
+    "language": "python",
+    "old": "def contract(a: int):\n    return a\n",
+    "new": "def contract(a: str):\n    return a\n",
+    "expected_rule_id": "DG107"
+  },
+  {
+    "id": "py-return-annotation-changed",
+    "language": "python",
+    "old": "def contract(a) -> int:\n    return a\n",
+    "new": "def contract(a) -> str:\n    return a\n",
+    "expected_rule_id": "DG108"
+  },
+  {
+    "id": "py-unchanged",
+    "language": "python",
+    "old": "def contract(a=1):\n    return a\n",
+    "new": "def contract(a=1):\n    return a\n",
+    "expected_rule_id": null
+  },
+  {
+    "id": "py-body-only",
+    "language": "python",
+    "old": "def contract(a):\n    return a\n",
+    "new": "def contract(a):\n    return a + 1\n",
+    "expected_rule_id": null
+  },
+  {
+    "id": "ts-parameter-added",
+    "language": "typescript",
+    "old": "function contract(a: number): number { return a; }\n",
+    "new": "function contract(a: number, b: string): number { return a; }\n",
+    "expected_rule_id": "DG102"
+  },
+  {
+    "id": "ts-return-type-changed",
+    "language": "typescript",
+    "old": "function contract(a: number): number { return a; }\n",
+    "new": "function contract(a: number): string { return String(a); }\n",
+    "expected_rule_id": "DG108"
+  },
+  {
+    "id": "ts-unchanged",
+    "language": "typescript",
+    "old": "function contract(a: number): number { return a; }\n",
+    "new": "function contract(a: number): number { return a; }\n",
+    "expected_rule_id": null
+  },
+  {
+    "id": "go-parameter-syntax-changed",
+    "language": "go",
+    "old": "package p\nfunc contract(a int) int { return a }\n",
+    "new": "package p\nfunc contract(a string) int { return 1 }\n",
+    "expected_rule_id": "DG110"
+  },
+  {
+    "id": "go-return-type-changed",
+    "language": "go",
+    "old": "package p\nfunc contract(a int) int { return a }\n",
+    "new": "package p\nfunc contract(a int) string { return \"x\" }\n",
+    "expected_rule_id": "DG108"
+  },
+  {
+    "id": "py-parse-gap",
+    "language": "python",
+    "old": "def contract(a):\n    return a\n",
+    "new": "def contract(a:\n    return a\n",
+    "expected_rule_id": null,
+    "expected_parse_gap": true
+  }
+]

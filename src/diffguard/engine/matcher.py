@@ -2,28 +2,27 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-from diffguard.engine._types import Symbol
+from diffguard.engine._types import MatchedSymbol, Symbol
 
 SymbolKey = tuple[str, str, str | None]
+CrossFileSymbolKey = tuple[str, str, str, str | None]
 
-UnmatchedByFile = dict[str, list[Symbol]]
-"""File path -> symbols left unmatched within that file (cross-file move candidates)."""
+UnmatchedFileSymbols = tuple[str, list[Symbol]]
+"""Parser language and symbols left unmatched within one file."""
 
+UnmatchedByFile = dict[str, UnmatchedFileSymbols]
+"""File path -> language-aware cross-file move candidates."""
 
-@dataclass(frozen=True)
-class MatchedSymbol:
-    """A matched pair of old/new symbols, or an unmatched symbol."""
-
-    old: Symbol | None  # None = added
-    new: Symbol | None  # None = removed
-    file_from: str | None = None  # for cross-file moves
-    file_to: str | None = None  # destination file for cross-file moves
+LocatedSymbol = tuple[str, Symbol]
 
 
 def _key(s: Symbol) -> SymbolKey:
     return (s.name, s.kind, s.parent)
+
+
+def _cross_file_key(language: str, symbol: Symbol) -> CrossFileSymbolKey:
+    """Return move identity, including the parser language that produced it."""
+    return (language, symbol.name, symbol.kind, symbol.parent)
 
 
 def _build_index(symbols: list[Symbol]) -> dict[SymbolKey, list[Symbol]]:
@@ -97,42 +96,94 @@ def _match_duplicates(
         results.append(MatchedSymbol(old=None, new=n))
 
 
+def _match_unique_cross_file_evidence(
+    old_records: list[LocatedSymbol],
+    new_records: list[LocatedSymbol],
+    matched_old: set[int],
+    matched_new: set[int],
+    results: list[MatchedSymbol],
+    *,
+    require_signature: bool,
+    require_body: bool,
+) -> None:
+    """Match one evidence tier only where both sides have one candidate."""
+    candidates_by_old: dict[int, list[int]] = {}
+    candidates_by_new: dict[int, list[int]] = {}
+    for old_index, (old_file, old_symbol) in enumerate(old_records):
+        if old_index in matched_old:
+            continue
+        for new_index, (new_file, new_symbol) in enumerate(new_records):
+            if new_index in matched_new or new_file == old_file:
+                continue
+            if require_signature and old_symbol.signature != new_symbol.signature:
+                continue
+            if require_body and old_symbol.body_hash != new_symbol.body_hash:
+                continue
+            candidates_by_old.setdefault(old_index, []).append(new_index)
+            candidates_by_new.setdefault(new_index, []).append(old_index)
+
+    for old_index, candidates in candidates_by_old.items():
+        if len(candidates) != 1:
+            continue
+        new_index = candidates[0]
+        if len(candidates_by_new[new_index]) != 1:
+            continue
+        old_file, old_symbol = old_records[old_index]
+        new_file, new_symbol = new_records[new_index]
+        results.append(
+            MatchedSymbol(
+                old=old_symbol,
+                new=new_symbol,
+                file_from=old_file,
+                file_to=new_file,
+            )
+        )
+        matched_old.add(old_index)
+        matched_new.add(new_index)
+
+
 def match_cross_file(
     unmatched_old: UnmatchedByFile,
     unmatched_new: UnmatchedByFile,
 ) -> list[MatchedSymbol]:
-    """Match unmatched symbols across files to detect moves."""
+    """Match unmatched symbols across files to detect bounded move candidates.
+
+    Evidence is considered strongest-first: exact signature plus body, exact
+    signature, then body. Every tier requires a unique relationship from both
+    directions; ambiguous duplicates are left as additions/removals instead of
+    inventing a move identity or source path.
+    """
     results: list[MatchedSymbol] = []
 
-    # Flatten new symbols with file info
-    new_by_key: dict[SymbolKey, list[tuple[str, Symbol]]] = {}
-    for file_path, symbols in unmatched_new.items():
-        for s in symbols:
-            new_by_key.setdefault(_key(s), []).append((file_path, s))
+    old_by_key: dict[CrossFileSymbolKey, list[LocatedSymbol]] = {}
+    for file_path, (language, symbols) in unmatched_old.items():
+        for symbol in symbols:
+            old_by_key.setdefault(_cross_file_key(language, symbol), []).append((file_path, symbol))
 
-    matched_new: set[int] = set()
+    new_by_key: dict[CrossFileSymbolKey, list[LocatedSymbol]] = {}
+    for file_path, (language, symbols) in unmatched_new.items():
+        for symbol in symbols:
+            new_by_key.setdefault(_cross_file_key(language, symbol), []).append((file_path, symbol))
 
-    for old_file, old_symbols in unmatched_old.items():
-        for old_sym in old_symbols:
-            key = _key(old_sym)
-            candidates = new_by_key.get(key, [])
-            for i, (new_file, new_sym) in enumerate(candidates):
-                if id(new_sym) in matched_new:
-                    continue
-                # Guard: require matching signature or body hash to avoid
-                # false-positive moves between unrelated same-named symbols.
-                if (
-                    old_sym.signature != new_sym.signature
-                    and old_sym.body_hash != new_sym.body_hash
-                ):
-                    continue
-                if new_file != old_file:
-                    results.append(
-                        MatchedSymbol(
-                            old=old_sym, new=new_sym, file_from=old_file, file_to=new_file
-                        )
-                    )
-                    matched_new.add(id(new_sym))
-                    break
+    for key in dict.fromkeys([*old_by_key, *new_by_key]):
+        old_records = old_by_key.get(key, [])
+        new_records = new_by_key.get(key, [])
+        matched_old: set[int] = set()
+        matched_new: set[int] = set()
+
+        for require_signature, require_body in (
+            (True, True),
+            (True, False),
+            (False, True),
+        ):
+            _match_unique_cross_file_evidence(
+                old_records,
+                new_records,
+                matched_old,
+                matched_new,
+                results,
+                require_signature=require_signature,
+                require_body=require_body,
+            )
 
     return results

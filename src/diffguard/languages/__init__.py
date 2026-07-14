@@ -42,11 +42,18 @@ def get_language_module(language: str) -> ModuleType:
     return importlib.import_module(module_path)
 
 
-def get_parser(language: str) -> tree_sitter.Parser:
-    """Get the tree-sitter parser for a language."""
+def get_parser(language: str, *, file_path: str | None = None) -> tree_sitter.Parser:
+    """Get the tree-sitter parser for a semantic language and optional path."""
     mod = get_language_module(language)
     if language == "javascript" and hasattr(mod, "get_js_language"):
         lang: tree_sitter.Language = mod.get_js_language()
+    elif (
+        language == "typescript"
+        and file_path is not None
+        and os.path.splitext(file_path)[1] == ".tsx"
+        and hasattr(mod, "get_tsx_language")
+    ):
+        lang = mod.get_tsx_language()
     else:
         lang = mod.get_language()
     return tree_sitter.Parser(lang)

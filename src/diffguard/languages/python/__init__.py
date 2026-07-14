@@ -172,6 +172,7 @@ def _build_function_signature(
 ) -> str:
     """Build the function signature string."""
     name_node = node.child_by_field_name("name")
+    type_params = node.child_by_field_name("type_parameters")
     params_node = node.child_by_field_name("parameters")
     return_type = node.child_by_field_name("return_type")
 
@@ -179,7 +180,9 @@ def _build_function_signature(
         text = node_text(node)
         sig = text.split(":")[0] if ":" in text else text.split("\n")[0]
     else:
-        sig = f"def {node_text(name_node)}{node_text(params_node)}"
+        keyword = "async def" if any(child.type == "async" for child in node.children) else "def"
+        generic = node_text(type_params) if type_params else ""
+        sig = f"{keyword} {node_text(name_node)}{generic}{node_text(params_node)}"
         if return_type:
             sig += f" -> {node_text(return_type)}"
 
@@ -192,12 +195,14 @@ def _build_function_signature(
 def _build_class_signature(node: tree_sitter.Node) -> str:
     """Build the class signature string."""
     name_node = node.child_by_field_name("name")
+    type_params = node.child_by_field_name("type_parameters")
     superclasses = node.child_by_field_name("superclasses")
 
     if name_node is None:
         return node_text(node).split(":")[0]
 
-    sig = f"class {node_text(name_node)}"
+    generic = node_text(type_params) if type_params else ""
+    sig = f"class {node_text(name_node)}{generic}"
     if superclasses:
         sig += node_text(superclasses)
 
