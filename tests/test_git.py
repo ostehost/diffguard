@@ -16,6 +16,7 @@ import pytest
 from diffguard.diff import parse_diff
 from diffguard.engine.pipeline import run_pipeline
 from diffguard.git import (
+    _decode_git_path_record,
     _force_supported_binary_records_to_text,
     get_diff,
     get_file_at_snapshot,
@@ -179,17 +180,9 @@ def test_hooks_dir_consumes_only_one_platform_record_terminator() -> None:
     assert "text" not in run.call_args.kwargs
 
 
-@pytest.mark.skipif(os.name == "nt", reason="Windows paths cannot end in carriage return")
-def test_hooks_dir_preserves_core_hooks_path_trailing_carriage_return(tmp_path: Path) -> None:
-    subprocess.run(["git", "init"], cwd=tmp_path, capture_output=True, check=True)
-    subprocess.run(
-        ["git", "config", "core.hooksPath", "hooks\r"],
-        cwd=tmp_path,
-        capture_output=True,
-        check=True,
-    )
-
-    assert get_hooks_dir(tmp_path) == tmp_path / "hooks\r"
+@pytest.mark.skipif(os.name == "nt", reason="Windows uses CRLF as its record terminator")
+def test_git_path_record_preserves_trailing_carriage_return() -> None:
+    assert _decode_git_path_record(b"hooks\r\n") == "hooks\r"
 
 
 def test_worktree_read_does_not_follow_symlink(tmp_path) -> None:
